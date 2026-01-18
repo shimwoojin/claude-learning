@@ -1,0 +1,17 @@
+{
+  "name": "claude-learning-docs",
+  "version": "1.0.0",
+  "description": "Claude Code와 함께한 학습 기록",
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "keywords": ["claude", "learning", "documentation"],
+  "author": "Shim Woojin",
+  "license": "MIT",
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}
