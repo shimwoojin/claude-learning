@@ -1,0 +1,89 @@
+name: Sync Learning Notes
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'CLAUDE.md'
+      - 'DEVLOG.md'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout learning repo
+        uses: actions/checkout@v4
+        with:
+          repository: shimwoojin/claude-learning
+          token: ${{ secrets.LEARNING_REPO_TOKEN }}
+          path: claude-learning
+
+      - name: Extract project info
+        id: project
+        run: |
+          # 프로젝트명 추출 (폴더명 기반)
+          PROJECT_NAME=$(basename $GITHUB_REPOSITORY)
+          echo "name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+          echo "name_lower=$(echo $PROJECT_NAME | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Generate learning note
+        run: |
+          PROJECT_NAME="${{ steps.project.outputs.name }}"
+          PROJECT_LOWER="${{ steps.project.outputs.name_lower }}"
+          TARGET_FILE="claude-learning/docs/projects/${PROJECT_LOWER}.md"
+
+          mkdir -p claude-learning/docs/projects
+
+          # 학습 노트 생성
+          echo "# ${PROJECT_NAME}" > "$TARGET_FILE"
+          echo "" >> "$TARGET_FILE"
+          echo "## 프로젝트 개요" >> "$TARGET_FILE"
+          echo "" >> "$TARGET_FILE"
+
+          # CLAUDE.md에서 프로젝트 개요 추출
+          if [ -f "CLAUDE.md" ]; then
+            sed -n '/## 프로젝트 개요/,/## /p' CLAUDE.md | head -n -1 >> "$TARGET_FILE"
+          fi
+
+          echo "" >> "$TARGET_FILE"
+          echo "## 핵심 시스템" >> "$TARGET_FILE"
+          echo "" >> "$TARGET_FILE"
+
+          # CLAUDE.md에서 핵심 시스템 목록 추출
+          if [ -f "CLAUDE.md" ]; then
+            sed -n '/## 핵심 시스템/,/## 구현 완료/p' CLAUDE.md | head -n -1 >> "$TARGET_FILE"
+          fi
+
+          echo "" >> "$TARGET_FILE"
+          echo "## 최근 개발 로그" >> "$TARGET_FILE"
+          echo "" >> "$TARGET_FILE"
+
+          # DEVLOG.md에서 최근 내용 추출
+          if [ -f "DEVLOG.md" ]; then
+            head -100 DEVLOG.md >> "$TARGET_FILE"
+          fi
+
+          echo "" >> "$TARGET_FILE"
+          echo "---" >> "$TARGET_FILE"
+          echo "*마지막 동기화: $(date +%Y-%m-%d)*" >> "$TARGET_FILE"
+          echo "*소스: [${PROJECT_NAME}](https://github.com/$GITHUB_REPOSITORY)*" >> "$TARGET_FILE"
+
+      - name: Commit and push
+        run: |
+          cd claude-learning
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update ${{ steps.project.outputs.name }} learning notes"
+            git push
+          fi
