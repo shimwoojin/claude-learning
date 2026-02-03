@@ -4,3 +4,4 @@ dist
 .vitepress/dist
 *.log
 .DS_Store
+*.env
