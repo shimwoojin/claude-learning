@@ -12,7 +12,9 @@ Claude Code와 함께 진행한 프로젝트별 학습 기록입니다.
 
 ### 게임 개발
 
-- *(추가 예정)*
+- [**WjWorld**](/projects/wjworld) - Unreal Engine 5.7 멀티플레이어 미니게임
+  - Unreal Engine 5.7, C++, Steam
+  - Gameplay Ability System, 코스메틱 시스템, 미니게임 규칙 시스템
 
 ---
 

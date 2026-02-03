@@ -30,3 +30,4 @@ features:
 | 프로젝트 | 기술 스택 | 주요 학습 내용 |
 |---------|-----------|---------------|
 | [Portfolio](/projects/portfolio) | React, Vite | 다국어 지원, PDF 생성, SEO, 애니메이션 |
+| [WjWorld](/projects/wjworld) | Unreal Engine 5.7, C++ | GAS, 코스메틱 시스템, 미니게임, Steam 연동 |
