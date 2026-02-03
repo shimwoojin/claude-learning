@@ -14,7 +14,8 @@ export default defineConfig({
 
     nav: [
       { text: '홈', link: '/' },
-      { text: '프로젝트', link: '/projects/' }
+      { text: '프로젝트', link: '/projects/' },
+      { text: '대화 기록', link: '/conversations/' }
     ],
 
     sidebar: {
@@ -25,6 +26,15 @@ export default defineConfig({
             { text: '개요', link: '/projects/' },
             { text: 'Portfolio (React)', link: '/projects/portfolio' },
             { text: 'WjWorld (Unreal)', link: '/projects/wjworld' }
+          ]
+        }
+      ],
+      '/conversations/': [
+        {
+          text: '대화 기록',
+          items: [
+            { text: '개요', link: '/conversations/' },
+            { text: '학습 노트 자동화 (2026-02-03)', link: '/conversations/2026-02-03-wjworld-learning-automation' }
           ]
         }
       ]
