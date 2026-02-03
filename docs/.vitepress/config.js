@@ -23,7 +23,8 @@ export default defineConfig({
           text: '프로젝트 학습 기록',
           items: [
             { text: '개요', link: '/projects/' },
-            { text: 'Portfolio (React)', link: '/projects/portfolio' }
+            { text: 'Portfolio (React)', link: '/projects/portfolio' },
+            { text: 'WjWorld (Unreal)', link: '/projects/wjworld' }
           ]
         }
       ]
