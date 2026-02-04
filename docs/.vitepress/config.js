@@ -34,7 +34,7 @@ export default defineConfig({
           text: '대화 기록',
           items: [
             { text: '개요', link: '/conversations/' },
-            { text: '학습 노트 자동화 (2026-02-03)', link: '/conversations/2026-02-03-wjworld-learning-automation' }
+            { text: '전체 대화', link: '/conversations/all' }
           ]
         }
       ]
