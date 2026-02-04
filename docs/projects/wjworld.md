@@ -73,21 +73,34 @@ GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아
 ### 코스메틱 시스템
 Steam 무료 출시 후 유료 코스메틱 판매를 위한 시스템. ItemId(FName) 기반 플랫폼 독립 식별.
 - **CosmeticTypes**: `ECosmeticSlot`(Head/Body/Back/Effect), `FCosmeticSlotEntry`, `FCosmeticLoadout`(TArray 기반 리플리케이션 지원)
-- **CosmeticComponent**: 캐릭터에 부착, 비동기 에셋 로드(FStreamableManager), 슬롯별 메시 관리
-- **CosmeticSubsystem**: GameInstanceSubsystem. 인벤토리 캐시, 로드아웃 관리, 로컬 저장(GConfig)
+- **CosmeticComponent**: 캐릭터에 부착, 비동기 에셋 로드(FStreamableManager), 슬롯별 메시 관리, 로컬 플레이어만 브로드캐스트 수신
+- **CosmeticSubsystem**: GameInstanceSubsystem. 인벤토리 캐시, 로드아웃 관리, 로컬 저장(GConfig), Steam Inventory 폴링 콜백
 - **CosmeticDataAsset**: 카탈로그. `FCosmeticItemDefinition`(ItemId, SteamItemDefId, 메시, 아이콘, 가격). 양방향 룩업
-- **PurchaseSubsystem**: GameInstanceSubsystem. Steam MicroTransaction API 연동, 구매 상태 관리
+- **PurchaseSubsystem**: GameInstanceSubsystem. Steam MicroTransaction API 연동, 구매 상태 관리, 폴링 기반 결과 콜백
+- **테스트 함수**: `GenerateTestItem()`, `GrantAllItemsLocally()`, `ClearLocalInventory()`, `DebugPrintInventory/Loadout()`
+- **콘솔 명령어**: `Cosmetic_GrantItem`, `Cosmetic_GrantAll`, `Cosmetic_ClearInventory`, `Cosmetic_PrintInventory/Loadout`, `Cosmetic_Equip/Unequip`, `Cosmetic_RefreshInventory`
 
 ### 코스메틱 리플리케이션 흐름
 ```
-CosmeticSubsystem.GetLoadout() (서버 로컬)
-    ↓ (PossessedBy에서 호출)
-PlayerStateBase.SetCosmeticLoadout() (서버, 모든 모드에서 사용)
-    ↓ (DOREPLIFETIME → 네트워크 리플리케이션)
-PlayerStateBase.CosmeticLoadout (TArray<FCosmeticSlotEntry> 기반)
-    ↓ (OnRep_CosmeticLoadout 콜백)
-Character.CosmeticComponent.ApplyLoadout() (클라이언트)
-    ↓ (비동기 메시 로드)
+[서버 측 - PossessedBy]
+Character.PossessedBy() → PlayerStateBase.OnPawnSet()
+    ↓ (bPendingCosmeticApply 체크)
+CosmeticComponent.ApplyLoadout() (서버에서 즉시 적용)
+
+[클라이언트 - 자신의 캐릭터]
+PlayerStateBase.BeginPlay() → ServerSetCosmeticLoadout() RPC
+    ↓
+OnRep_CosmeticLoadout() → OnCosmeticLoadoutUpdated()
+    ↓ (Pawn 없으면 bPendingCosmeticApply = true)
+CharacterBase.OnRep_PlayerState() → PS->OnPawnSet() → 적용
+
+[클라이언트 - 3자 캐릭터]
+CharacterBase.OnRep_PlayerState() (PlayerState 복제 시 호출)
+    ↓
+CosmeticComponent.SetCatalog() + PS->OnPawnSet()
+    ↓
+CosmeticComponent.ApplyLoadout() (비동기 메시 로드)
+    ↓
 캐릭터 비주얼 적용
 ```
 
@@ -115,6 +128,55 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
 ## 최근 개발 로그
 
 # WjWorld 개발 로그
+
+## 2026-02-04
+### 작업 내용
+- **코스메틱 상점 UI 구현** (6개 파일 생성)
+  - `CosmeticItemEntryWidget` - 아이템 그리드 엔트리 (아이콘, 이름, 희귀도, 가격)
+  - `CosmeticPreviewPanel` - 3D 캐릭터 프리뷰 (CharacterPreviewActor 재사용)
+  - `CosmeticMainWindow` - 상점/인벤토리 통합 윈도우 (탭 전환, 4열 그리드)
+  - `LobbyHUDWidget`에 코스메틱 버튼 추가
+- **CosmeticSubsystem 초기화 개선**
+  - DeveloperSettings에 `CosmeticCatalog` 프로퍼티 추가
+  - Initialize()에서 자동 로드하도록 수정
+- **CosmeticComponent 개선**
+  - `OnLoadoutChanged` 델리게이트 구독 추가 (실시간 메시 반영)
+  - `CharacterPlay` → `CharacterBase`로 이동 (모든 캐릭터에서 사용 가능)
+- **Socket 기반 코스메틱 부착 시스템 구현**
+  - `FCosmeticItemDefinition`에 부착 설정 추가 (AttachSocketName, LocationOffset, RotationOffset, Scale)
+  - 슬롯별 기본 소켓 매핑: Head→"head", Back→"spine_03", Effect→"root"
+  - 모자 메시 임포트 및 테스트 완료
+- **Steam Inventory 폴링 콜백 구현**
+  - `CosmeticSubsystem`: 타이머 기반 폴링 (StartInventoryPolling, PollSteamInventoryResult, ParseInventoryResult)
+  - `PurchaseSubsystem`: 구매 결과 폴링 콜백 추가
+- **코스메틱 테스트 콘솔 명령어 추가** (PlayerControllerBase)
+  - `Cosmetic_GrantItem`, `Cosmetic_GrantAll`, `Cosmetic_ClearInventory`
+  - `Cosmetic_PrintInventory`, `Cosmetic_PrintLoadout`
+  - `Cosmetic_Equip`, `Cosmetic_Unequip`, `Cosmetic_RefreshInventory`
+- **코스메틱 상점 UI 마무리**
+  - 상점 모드에서 소유 아이템 장착/해제 기능 추가
+- **멀티플레이어 코스메틱 동기화 수정**
+  - `CosmeticComponent.OnLoadoutChangedHandler()`: IsLocallyControlled() 체크 추가
+  - `CharacterBase.OnRep_PlayerState()`: 3자 캐릭터 코스메틱 적용 로직 추가
+  - `PlayerStateBase`: OnPawnSet(), OnCosmeticLoadoutUpdated() 구현 (Play에서 이동)
+  - `CharacterWaitingRoom.PossessedBy()`: 서버 측 코스메틱 초기화 추가
+- **CLAUDE.md 갱신** 및 `/update-claude-md` 스킬 생성
+
+### 학습/메모
+- Socket Attachment vs Leader Pose vs Skeletal Mesh Merge: 슬롯 유형별 적합한 부착 방식이 다름
+- 모자 등 고정형 악세서리는 Socket Attachment, 옷/갑옷은 Leader Pose 권장
+- Mesh Merge는 드로우콜 최적화에 효과적이나 아이템 교체 시 재머지 필요
+- Steam Inventory API는 비동기 → 폴링 기반 콜백 패턴 필요
+- 멀티플레이어 코스메틱 동기화: `PossessedBy()`(서버) + `OnRep_PlayerState()`(클라이언트) 양쪽 필요
+- `OnRep_PlayerState()`는 자신/3자 모두에게 호출됨 → 3자 캐릭터 초기화에 활용
+
+### 이슈/해결
+- UHT 오류: 파라미터명 `Slot`이 UWidget::Slot과 충돌 → `CosmeticSlot`으로 변경
+- `SetBrushFromTexture`가 RenderTarget 미지원 → `SetBrushResourceObject` 사용
+- 멀티플레이어에서 OnLoadoutChanged 브로드캐스트가 모든 Pawn에 영향 → `IsLocallyControlled()` 체크 추가
+- WaitingRoom 3자 코스메틱 미동기화 → `CharacterBase.OnRep_PlayerState()`에서 `OnPawnSet()` 호출하도록 수정
+
+---
 
 ## 2026-02-03
 ### 작업 내용
@@ -165,19 +227,7 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
 - GameRule 카탈로그 조회 시스템 추가
 - Ready 버튼 피드백 수정
 
-### 학습/메모
--
 
 ---
-
-## 이전 기록
-
-### 주요 마일스톤
-- ApproachingWall 버그 수정 및 HUD/GameData 시스템 구현
-- 플레이어 프로필/스탯 시스템 구현
-- 어빌리티 UI/HUD 추가
-- GE 파일 구조 정리
-
----
-*마지막 동기화: 2026-02-03*
+*마지막 동기화: 2026-02-04*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
