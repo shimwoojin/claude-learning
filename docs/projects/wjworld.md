@@ -116,13 +116,24 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
 
 ### 플레이어 프로필 시스템
 - **PlayerProfileWidget**: 3D 캐릭터 프리뷰 + 미니게임별 스탯 표시, 비동기 스탯 로드, CosmeticLoadout 연동
-- **CharacterPreviewActor**: SceneCaptureComponent2D로 오프스크린 3D 렌더링 (256x512), FStreamableManager 비동기 코스메틱 메시 로드, SpotLightComponent 조명
+- **CharacterPreviewActor**: SceneCaptureComponent2D로 오프스크린 3D 렌더링 (256x512), FStreamableManager 비동기 코스메틱 메시 로드, Socket 기반 부착 (GetDefaultSocketName), StaticMesh/SkeletalMesh 동시 지원, SetupFromPawn()으로 Pawn에서 메시/ABP 복사
 
 ### Steam 빌드 설정
 - **조건부 컴파일**: `WITH_STEAM` 매크로 (Win64에서만 활성화)
 - **모듈**: Steamworks, OnlineSubsystemSteam (Win64 전용)
 - **플러그인**: OnlineSubsystemSteam 활성화
 - **코스메틱/구매/스탯 코드**: `#if WITH_STEAM` 블록으로 Steam API 호출 분리
+
+### WjWorldDeveloperSettings (중앙 설정)
+에디터에서 설정 가능한 중앙 집중식 에셋/클래스 참조. Project Settings > Game > WjWorld Developer Settings에서 설정.
+- **맵**: LobbyMapPath
+- **GameMode 클래스**: WaitingRoomGameModeClass, PlayGameModeClass
+- **캐릭터 기본값**: DefaultCharacterMesh, DefaultAnimBlueprintClass, DefaultInputMappingContext
+- **Approaching Wall**: BrickMesh, TileMesh, WallDescriptionAsset
+- **카탈로그**: MinigameCatalog, CosmeticCatalog, PlaceableObjectCatalog
+- **헬퍼 함수**: GetLobbyMapPath(), GetWaitingRoomOpenLevelURL(), GetPlayServerTravelURL()
+
+**설정 우선순위 패턴**: BP 서브클래스 UPROPERTY 값 우선 → DeveloperSettings 폴백
 
 
 ## 최근 개발 로그
