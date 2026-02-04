@@ -142,6 +142,17 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
 
 ## 2026-02-04
 ### 작업 내용
+- **코스메틱 미리보기/시착 시스템 구현**
+  - CharacterPreviewActor: Socket 기반 메시 부착, StaticMesh/SkeletalMesh 동시 지원
+  - SetupFromPawn()으로 Pawn에서 메시/ABP 복사
+  - 다중 슬롯 시착 유지 (슬롯 전환 시 리셋 안 함)
+- **하드코딩 경로 제거 및 DeveloperSettings 중앙화**
+  - 맵/GameMode/캐릭터/Approaching Wall 에셋 중앙 설정
+  - ConstructorHelpers 제거 → UPROPERTY + DeveloperSettings 폴백 패턴
+- **Approaching Wall 미니게임 완성**
+  - Kills 스탯 추적: LastAttacker 시스템 (CharacterPlay)
+  - 플레이어 이탈 시 캐릭터 Eliminate 처리
+  - 엣지 케이스: 솔로 승리, 동시 제거(무승부), 전원 이탈
 - **코스메틱 상점 UI 구현** (6개 파일 생성)
   - `CosmeticItemEntryWidget` - 아이템 그리드 엔트리 (아이콘, 이름, 희귀도, 가격)
   - `CosmeticPreviewPanel` - 3D 캐릭터 프리뷰 (CharacterPreviewActor 재사용)
@@ -187,6 +198,13 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
 - 멀티플레이어에서 OnLoadoutChanged 브로드캐스트가 모든 Pawn에 영향 → `IsLocallyControlled()` 체크 추가
 - WaitingRoom 3자 코스메틱 미동기화 → `CharacterBase.OnRep_PlayerState()`에서 `OnPawnSet()` 호출하도록 수정
 
+### 다음 작업 예정 (Approaching Wall 개선)
+- [ ] Normal Attack 시 Montage 발동
+- [ ] Lift Brick 시 드는 포즈 (Animation 필요) 및 실제 벽돌을 든 모습 3자 Replicate
+- [ ] Brick 이동 시 다른 색 벽돌 간 Z-Fight 현상 수정
+- [ ] 벽돌과 플레이어 끼임 케이스 추가 처리
+- [ ] GameplayCue 사용으로 Ability 발동 시 사운드 효과 추가
+
 ---
 
 ## 2026-02-03
@@ -220,24 +238,6 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
 
 ### 학습/메모
 - Claude Code Custom Slash Commands: `.claude/commands/` 폴더에 마크다운 파일로 정의
-- GitHub Actions로 cross-repo 작업 시 Personal Access Token (Fine-grained) 필요
-- 프로젝트별 DEVLOG.md + 전체 학습 레포 분리 구조가 관리에 효율적
-- **Claude Code Agent 시스템**: `.claude/agents/에이전트명/SKILL.md` 형식으로 커스텀 에이전트 생성 가능
-- **Agent vs Skill**: Agent는 독립 컨텍스트에서 실행 (결과만 반환), Skill은 메인 대화 컨텍스트에서 실행
-- **유용한 단축키**: `Shift+Tab` (권한 모드 전환), `Ctrl+O` (상세 출력), `Esc+Esc` (되돌리기)
-- **비용 절감**: `/compact` 자주 사용, Plan Mode로 계획 후 실행, Haiku 모델 활용
-
-### 이슈/해결
-- `OnPawnSet` protected 접근 오류 → public으로 이동하여 해결
-
----
-
-## 2026-02-02
-### 작업 내용
-- 로비 배치 시스템 구현 (PlacementComponent, PreviewActor, PlacedObjectActor)
-- GameRule 카탈로그 조회 시스템 추가
-- Ready 버튼 피드백 수정
-
 
 ---
 *마지막 동기화: 2026-02-04*
