@@ -6,12 +6,22 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-04 | WjWorld | [Approaching Wall 어빌리티 개선 및 GameplayCue](./2026-02-04-wjworld-ability-improvements.md) | #GAS #GameplayCue #Replication #Animation |
 | 2026-02-04 | WjWorld | [코스메틱 멀티플레이어 동기화 수정](./2026-02-04-wjworld-cosmetic-multiplayer-sync.md) | #Cosmetic #Multiplayer #Replication #Network |
 | 2026-02-04 | WjWorld | [코스메틱 상점 UI 구현 및 Socket 부착 시스템](./2026-02-04-wjworld-cosmetic-shop-ui.md) | #Cosmetic #UI #Socket #UnrealEngine |
 | 2026-02-03 | WjWorld | [SessionEnd Hook 디버깅 및 스킬 파일 생성](./2026-02-03-wjworld-hook-debugging.md) | #hooks #debugging #skills |
 | 2026-02-03 | WjWorld | [학습 노트 자동화 시스템 구축](./2026-02-03-wjworld-learning-automation.md) | #automation #hooks #github-actions |
 
 ## 태그별 분류
+
+### #GAS
+- [Approaching Wall 어빌리티 개선 및 GameplayCue](./2026-02-04-wjworld-ability-improvements.md) - UAbilityTask_PlayMontageAndWait, 어빌리티 로직 분리
+
+### #GameplayCue
+- [Approaching Wall 어빌리티 개선 및 GameplayCue](./2026-02-04-wjworld-ability-improvements.md) - 자동 매칭 규칙, Static vs Actor, ExecuteGameplayCue
+
+### #Animation
+- [Approaching Wall 어빌리티 개선 및 GameplayCue](./2026-02-04-wjworld-ability-improvements.md) - Montage 비동기 재생, 콜백 처리
 
 ### #Cosmetic
 - [코스메틱 멀티플레이어 동기화 수정](./2026-02-04-wjworld-cosmetic-multiplayer-sync.md) - 멀티플레이어 동기화, Steam Inventory
@@ -21,6 +31,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 - [코스메틱 멀티플레이어 동기화 수정](./2026-02-04-wjworld-cosmetic-multiplayer-sync.md) - OnRep_PlayerState, 3자 캐릭터 동기화
 
 ### #Replication
+- [Approaching Wall 어빌리티 개선 및 GameplayCue](./2026-02-04-wjworld-ability-improvements.md) - 3자 캐릭터 메시 리플리케이션, OnRep 패턴
 - [코스메틱 멀티플레이어 동기화 수정](./2026-02-04-wjworld-cosmetic-multiplayer-sync.md) - PlayerState 리플리케이션, bPendingCosmeticApply 패턴
 
 ### #Network
