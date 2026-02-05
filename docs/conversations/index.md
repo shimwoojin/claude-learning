@@ -6,6 +6,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-05 | WjWorld | [LAN/Steam 네트워크 모드 토글 기능 구현](./2026-02-05-wjworld-network-mode-toggle.md) | #Network #Steam #Session #UI #Polishing |
 | 2026-02-05 | WjWorld | [Steam 2PC 테스트 버그 수정](./2026-02-05-wjworld-steam-2pc-bugfixes.md) | #Multiplayer #Replication #Debugging #GAS #Animation |
 | 2026-02-04 | WjWorld | [Steam 테스트 환경 구축 및 패키징 빌드 이슈 해결](./2026-02-04-wjworld-steam-setup-packaging.md) | #steam #packaging #unreal-engine #multiplayer #debugging |
 | 2026-02-04 | WjWorld | [Approaching Wall 어빌리티 개선 및 GameplayCue](./2026-02-04-wjworld-ability-improvements.md) | #GAS #GameplayCue #Replication #Animation |
