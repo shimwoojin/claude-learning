@@ -6,6 +6,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-05 | WjWorld | [Sumo Knockoff 미니게임 구현 & LAN SocketSubsystem 수정](./2026-02-05-wjworld-sumo-minigame-lan-fix.md) | #Minigame #GameRule #GAS #Networking #LAN #SocketSubsystem |
 | 2026-02-05 | WjWorld | [Steam P2P 네트워킹 (SteamNetDriver) 문제 해결](./2026-02-05-wjworld-steam-netdriver-fix.md) | #steam #networking #netdriver #multiplayer #config |
 | 2026-02-05 | WjWorld | [LAN/Steam 네트워크 모드 토글 기능 구현](./2026-02-05-wjworld-network-mode-toggle.md) | #Network #Steam #Session #UI #Polishing |
 | 2026-02-05 | WjWorld | [Steam 2PC 테스트 버그 수정](./2026-02-05-wjworld-steam-2pc-bugfixes.md) | #Multiplayer #Replication #Debugging #GAS #Animation |
