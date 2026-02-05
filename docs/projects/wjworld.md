@@ -61,12 +61,16 @@
 ### Sumo Knockoff 미니게임
 두 번째 미니게임. 원형 플랫폼 위에서 상대를 밀어 떨어뜨리는 PvP 서바이벌.
 - **WjWorldGameRuleSumo**: TickGameRule에서 매 프레임 Z 위치 체크, FallThresholdZ(-500) 미만 시 Eliminate
-- **GA_Push**: 전방 구형 오버랩 → LaunchCharacter() 넉백, SetLastAttacker() 킬 추적
-- **SumoGameDataComponent**: AlivePlayerCount, TotalPlayerCount (Replicated)
-- **SumoPlayerDataComponent**: bIsAlive (Replicated + OnRep + Delegate)
-- **승리 조건**: AlivePlayerCount <= 1 && bIsGameStarted
+- **GA_Push**: 전방 구형 오버랩 → LaunchCharacter() 넉백, SetLastAttacker() 킬 추적, SuperPush 배율, CameraShake 피격 피드백
+- **SumoGameDataComponent**: AlivePlayerCount, TotalPlayerCount, KillFeed (LastKillFeedText+Counter), Round (CurrentRound/MaxRounds), FSumoPlayerScore 배열 (모두 Replicated)
+- **SumoPlayerDataComponent**: bIsAlive, TotalScore (Replicated + OnRep + Delegate)
+- **SumoFloorRingActor**: 축소 플랫폼 링 (ESumoRingState: Active/Warning/Destroyed), RingOrder 기반 외곽부터 파괴
+- **SumoPowerUpActor**: 파워업 픽업 (ESumoPowerUpType: SpeedBoost/SuperPush/Shield), SphereComponent 오버랩, AddLooseGameplayTag 버프
+- **라운드 시스템**: 3라운드, 탈락 순서 기반 점수 배분, 라운드 간 링/파워업/플레이어 리셋
+- **승리 조건**: 라운드 내 AlivePlayerCount <= 1, 최종 TotalScore 기준 우승자
+- **맵 변형**: MapOption URL 파라미터 (Default/Bridge/Obstacle), 맵별 설정 분기
 - **엣지 케이스**: 솔로 자동 승리, 동시 탈락, 전원 이탈
-- **상태**: 코드 완료, 에디터 세팅 필요 (맵, 카탈로그, 입력 바인딩)
+- **상태**: C++ 코드 완료, 에디터 세팅 필요 (BP 프로퍼티, 링 배치, HUD 위젯, 파워업 BP)
 
 ### Gameplay Ability System
 GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아 각 어빌리티 구현.
@@ -75,9 +79,9 @@ GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아
 - **GA_NormalAttack**: 4방향 스냅(Yaw 기반) 벽돌 공격, BrickType별 처리 (Standard 파괴 불가, Explosive/Moving/Destructible)
 - **GA_SpawnBrick**: 충전 기반 벽돌 배치, Preview → Confirm/Cancel 패턴, GE 기반 충전 리필, 어트리뷰트 변경 위임
 - **GA_LiftBrick**: 벽돌 재배치 어빌리티, Moving/Destructible 벽돌 들어올리기, Cancel 시 원래 위치 복원, 들고 있는 벽돌 색상 리플리케이션
-- **GA_Push**: Sumo 넉백 어빌리티, 전방 구형 오버랩 → LaunchCharacter(), PushForce=1200, CooldownDuration=1.5s, SetLastAttacker()
+- **GA_Push**: Sumo 넉백 어빌리티, 전방 구형 오버랩 → LaunchCharacter(), PushForce=1200, CooldownDuration=1.5s, SetLastAttacker(), SuperPushMultiplier(2x), PushHitCameraShake
 - **AttributeSet**: HP, MaxSpawnBrickCharges, SpawnBrickCharges, OnRep 콜백
-- **Effects**: GE_AbilityCooldown (쿨다운), GE_SpawnBrickChargeCost (충전 비용)
+- **Effects**: GE_AbilityCooldown (쿨다운), GE_SpawnBrickChargeCost (충전 비용), GE_SumoSpeedBoost/SuperPush/Shield (참조용 GE, 실제 버프는 AddLooseGameplayTag)
 
 ### GameplayTag 정의
 - `State_SpawnBrickPreview` - GA_SpawnBrick 활성 상태
@@ -87,6 +91,10 @@ GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아
 - `Ability_Push` - GA_Push 어빌리티 태그
 - `Cooldown_Push` - GA_Push 쿨다운 태그
 - `GameplayCue_Ability_Push` - Push 이펙트/사운드
+- `Buff_SpeedBoost` - Sumo 이동속도 버프
+- `Buff_SuperPush` - Sumo 강화 넉백 버프 (1회 소모)
+- `Buff_Shield` - Sumo 보호막 (제거 1회 무시)
+- `GameplayCue_Sumo_PowerUp_Pickup` - 파워업 획득 이펙트
 
 ### 코스메틱 시스템
 Steam 무료 출시 후 유료 코스메틱 판매를 위한 시스템. ItemId(FName) 기반 플랫폼 독립 식별.
@@ -273,7 +281,7 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
   - Development Win64 패키징 → `Steam/content/` 복사 → `upload.bat` 실행
   - 각 단계 실패 시 즉시 중단, `steam_appid.txt` 자동 생성
 
-#### Sumo Knockoff 미니게임 코드 구현 (전체)
+#### Sumo Knockoff 미니게임 코드 구현 (기본)
 - **GA_Push 어빌리티** (`AbilitySystem/Abilities/GA_Push.h/.cpp`)
   - 전방 구형 오버랩 → 히트 캐릭터에 `LaunchCharacter()` 넉백
   - PushForce=1200, PushRange=300, PushUpForce=400, CooldownDuration=1.5s
@@ -288,15 +296,15 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - **WjTypes**: `EWjWorldAbilityInputID::Ability6 = 6` 추가
 - **WjWorldStatTypes**: `WjWorldStats::Sumo` 네임스페이스 + Sumo 디스크립터
 
-#### 미니게임별 어빌리티 제한 시스템
-- **WjWorldMinigameDataAsset**: `AllowedAbilityTags`, `StatNamespace` 필드 추가
-- **WjWorldGameStatePlay**: `AllowedAbilityTags`, `StatNamespace` Replicated 프로퍼티
-- **WjWorldGameRuleBase**: `OnGameReady()`에서 MinigameCatalog 조회 → GameState에 설정
-- **WjWorldGameplayAbilityBase**: `CanActivateAbility()` 오버라이드
-  - 빈 컨테이너 = 전부 허용 (하위 호환), 비어있지 않으면 AssetTag 매칭 필요
-
-#### 스탯 네임스페이스 범용화
-- **WjWorldGameStatePlay::OnRep_GameResult()**: 하드코딩된 `ApproachingWall` 네임스페이스 대신 `StatNamespace` 기반 동적 스탯 키 생성
+#### Sumo Knockoff 6대 기능 추가 구현
+- **1. Push 히트 피드백** (`GA_Push.h/.cpp`)
+  - `PushHitCameraShake` (TSubclassOf<UCameraShakeBase>) 프로퍼티 추가
+  - 피격자에게 `ClientStartCameraShake()` 호출
+  - `SuperPushMultiplier` (기본 2.0) - Buff.SuperPush 태그 보유 시 Force 배율 적용 후 태그 소모
+- **2. 킬피드 시스템** (`SumoGameDataComponent`, `SumoHUDWidget`)
+  - `LastKillFeedText` + `KillFeedCounter` (ReplicatedUsing) → 클라이언트 자동 동기화
+  - `FOnSumoKillFeed` 델리게이트 → HUD에서 3초 표시 후 자동 숨김
+  - GameRuleSumo에서 Eliminate 시 "{Killer} knocked out {Victim}" 브로드캐스트
 
 ---
 *마지막 동기화: 2026-02-05*
