@@ -6,6 +6,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-05 | WjWorld | [Steam P2P 네트워킹 (SteamNetDriver) 문제 해결](./2026-02-05-wjworld-steam-netdriver-fix.md) | #steam #networking #netdriver #multiplayer #config |
 | 2026-02-05 | WjWorld | [LAN/Steam 네트워크 모드 토글 기능 구현](./2026-02-05-wjworld-network-mode-toggle.md) | #Network #Steam #Session #UI #Polishing |
 | 2026-02-05 | WjWorld | [Steam 2PC 테스트 버그 수정](./2026-02-05-wjworld-steam-2pc-bugfixes.md) | #Multiplayer #Replication #Debugging #GAS #Animation |
 | 2026-02-04 | WjWorld | [Steam 테스트 환경 구축 및 패키징 빌드 이슈 해결](./2026-02-04-wjworld-steam-setup-packaging.md) | #steam #packaging #unreal-engine #multiplayer #debugging |
@@ -51,7 +52,11 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 - [코스메틱 상점 UI 구현 및 Socket 부착 시스템](./2026-02-04-wjworld-cosmetic-shop-ui.md) - UE5 코스메틱 시스템
 
 ### #steam
+- [Steam P2P 네트워킹 (SteamNetDriver) 문제 해결](./2026-02-05-wjworld-steam-netdriver-fix.md) - SteamNetDriver config, SocketSubsystemSteamIP, bUseSteamNetworking
 - [Steam 테스트 환경 구축 및 패키징 빌드 이슈 해결](./2026-02-04-wjworld-steam-setup-packaging.md) - AppID 설정, Inventory Service, Dev Comp Package
+
+### #netdriver
+- [Steam P2P 네트워킹 (SteamNetDriver) 문제 해결](./2026-02-05-wjworld-steam-netdriver-fix.md) - NetDriverDefinitions, StaticLoadClass 경로 형식, CancelFindSessions 주의
 
 ### #packaging
 - [Steam 테스트 환경 구축 및 패키징 빌드 이슈 해결](./2026-02-04-wjworld-steam-setup-packaging.md) - Non-asset 파일 패키징, FFilePath 경로 변환
