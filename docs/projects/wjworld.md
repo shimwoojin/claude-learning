@@ -150,7 +150,28 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
 # WjWorld 개발 로그
 
 ## 2026-02-05
-### 작업 내용 - Steam 2PC 테스트 버그 수정
+### 작업 내용 - Steam 출시 Polishing & 네트워크 모드 토글
+
+#### LAN/Steam 네트워크 모드 토글 기능
+- **ENetworkMode enum 추가** (`SessionTypes.h`)
+  - `LAN`, `Steam` 두 가지 모드 지원
+- **SessionManager 네트워크 모드 분기**
+  - LAN: `bIsLANMatch=true`, `bUsesPresence=false`
+  - Steam: `bIsLANMatch=false`, `bUsesPresence=true`, `bUseLobbiesIfAvailable=true`
+  - `CreateSession()`, `FindSessions()`, `CreateMigrationSession()`, `FindMigrationSession()` 모두 적용
+- **UI 지원**
+  - `CreateRoomWindow`: `NetworkModeComboBox` 추가 (WITH_STEAM 빌드에서만 Steam 옵션 표시)
+  - `RoomListWindow`: `SetNetworkMode()`, `ShowPopupWithNetworkMode()` 추가
+
+#### Steam 출시 Polishing (크래시 안전성 & 코드 품질)
+- **Critical null 체크 추가** (6개 파일)
+  - `OnRep_IsGameStartCountDownReady()`, `OnRep_GameResult()` 등
+- **빈 Tick() 비활성화** - `bCanEverTick = false` 설정
+- **로그 카테고리 일관성** - `LogWjWorld` → `LogWjWorldStats`
+- **check() → ensureMsgf() 변경** - 릴리스 빌드 크래시 방지
+- **AttributeSet OnRep 매크로 추가** - `GAMEPLAYATTRIBUTE_REPNOTIFY`
+
+#### Steam 2PC 테스트 버그 수정
 - **[버그] Approaching Wall 종료 후 WaitingRoom 복귀 실패**
   - 원인: `OnGameEnd()` 타이머 람다에서 `this` 캡처 후 `GetWorld()` 호출
   - 수정: `TravelURL` 값 캡처 + `TWeakObjectPtr<UWorld>` 사용
@@ -176,77 +197,56 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
   - `LiftedBrickDynamicMaterial`로 런타임 색상 적용
   - 파일: `WjWorldCharacterPlay.h/.cpp`
 
+#### Steam P2P 네트워킹 (SteamNetDriver) 문제 해결
+- **SessionManager::Initialize() 폴백 로직 추가**
+  - `IOnlineSubsystem::Get(STEAM_SUBSYSTEM)` 우선 시도 → 실패 시 `NULL_SUBSYSTEM` 폴백
+  - `#include "OnlineSubsystemNames.h"` 추가
+- **steam_appid.txt 패키징 빌드 누락**
+  - 증상: `SteamAPI failed to initialize`, `[AppId: 0]`
+  - 수정: 패키징 빌드 폴더에 수동 복사 → 이후 자동화 배치에 포함
+- **bUsesPresence/bUseLobbiesIfAvailable 매칭**
+  - Steam OSS에서 두 값이 다르면 세션 생성 실패
+  - 수정: Steam 모드에서 둘 다 `true`로 설정
+- **검색 타이밍 이슈 해결**
+  - 증상: LAN 검색 진행 중 Steam 전환 시 "Ignoring game search request while one is pending"
+  - 수정: `bIsSearchInProgress` 플래그 + `PendingSearchRequest` 큐 패턴
+  - `CancelFindSessions()` 사용 시 앱 행 → 제거하고 wait-and-queue 패턴 채택
+- **SteamNetDriver 로딩 안됨 근본 원인 3가지 수정**
+  1. Config 섹션: `[/Script/Engine.GameEngine]` → `[/Script/Engine.Engine]` (BaseEngine.ini와 동일)
+  2. DriverClassName: `"SocketSubsystemSteamIP.SteamNetDriver"` → `"/Script/SocketSubsystemSteamIP.SteamNetDriver"` (StaticLoadClass 정규 경로)
+  3. `[OnlineSubsystemSteam]`에 `bUseSteamNetworking=true` 추가 (Steam 소켓 서브시스템 등록 조건)
+- **NetConnectionClassName도 `/Script/` 접두사 형식으로 통일**
+- **BeaconNetDriver, DemoNetDriver 재정의** (ClearArray 후 누락 방지)
+
+#### 빌드 자동화
+- **PackageAndUploadSteam.bat 생성** (`Batch/`)
+  - Development Win64 패키징 → `Steam/content/` 복사 → `upload.bat` 실행
+  - 각 단계 실패 시 즉시 중단, `steam_appid.txt` 자동 생성
+
 ### 학습/메모
 - `GetAuthGameMode()`는 클라이언트에서 null 반환 → GameState의 리플리케이트된 데이터로 폴백
 - ServerTravel URL 포맷: `GetAssetPathString()` (`.MapName` 포함) vs `GetLongPackageName()` (순수 경로)
 - Timer 람다에서 `this` 캡처 주의 → 객체 소멸 후 호출 시 크래시, `TWeakObjectPtr` 사용
+- **Steam vs LAN 세션 설정 차이점**:
+  - LAN: `bIsLANMatch=true`, `bUsesPresence=false`, `bUseLobbiesIfAvailable=false`
+  - Steam: `bIsLANMatch=false`, `bUsesPresence=true`, `bUseLobbiesIfAvailable=true`
+  - 검색 시 `bIsLanQuery` 플래그도 맞춰줘야 함
+- `SEARCH_PRESENCE` 상수는 UE 5.7에서 변경됨 → 직접 사용 불가, 제거하거나 문자열로 대체
+- **SocketSubsystemSteamIP 모듈 동작 조건**:
+  - 에디터에서는 자동 비활성화 (`IsRunningDedicatedServer() || IsRunningGame()` 체크)
+  - `bUseSteamNetworking=true` 설정 필요 (Steam 소켓 서브시스템 등록)
+  - `SteamNetDriver::IsAvailable()`이 Steam 소켓 서브시스템 등록 여부로 판단
+- **UE Config NetDriverDefinitions 형식**: `/Script/ModuleName.ClassName` (StaticLoadClass 정규 경로)
+- **Config 섹션 상속**: `UGameEngine` → `UEngine`, NetDriverDefinitions는 `UEngine`에 선언 → `[/Script/Engine.Engine]` 섹션 사용
+- **CancelFindSessions()** → `OnCancelFindSessionsComplete` 콜백 발생 (OnFindSessionsComplete 아님) → 대기열 패턴에서 사용 금지
 
 ### 이슈/해결
 - COMDAT 중복 링크 오류 → Intermediate 폴더 정리 후 재빌드
+- **Steam 세션 전체 흐름**: OSS 초기화 → 세션 생성(Lobby) → 검색 → 참가 → SteamNetDriver P2P 연결 → 정상 동작 확인
 
----
-
-## 2026-02-04 (저녁)
-### 작업 내용 - Steam 테스트 환경 구축
-- **Steam 앱 설정 완료**
-  - AppID: 4399350, DepotID: 4399351
-  - VDF 스크립트 생성 (`Steam/scripts/`)
-  - DefaultEngine.ini Steam 설정 추가
-  - steam_appid.txt 생성 (로컬 테스트용)
-- **Steam 빌드 업로드** (BuildID: 21779250)
-  - SteamCMD 기반 업로드 스크립트 (`Steam/upload.bat`)
-  - Dev Comp Package로 테스트 계정 접근 설정
-- **Steam Inventory Service 설정**
-  - itemdefs.json 생성 (100: Delivery Bag, 101: Military Hat)
-  - AddPromoItem/AddAllPromoItems 함수 추가 (CosmeticSubsystem)
-  - Cosmetic_AddPromo/Cosmetic_AddAllPromos 콘솔 명령어 추가
-- **패키징 이슈 수정**
-  - ToolWidgets 모듈 제거 (에디터 전용 모듈)
-  - IntroWindow: 비디오 재생 실패 시 폴백 로직 추가
-  - WjWorldGameModeIntro: IntroWidgetClass 미설정 시 스킵 로직 추가
-- **멀티플레이어 테스트 환경**
-  - 두 번째 Steam 계정으로 테스트 환경 구축
-  - Steamworks 파트너 그룹에 테스트 계정 추가
-
-### 이슈/해결 (진행 중)
-- **[버그] Approaching Wall 벽돌 스폰 안됨** (Development/Shipping 빌드 전용)
-  - 증상 정리:
-    1. DebugGameEditor (에디터에서 실행, 리슨서버 2명) - **문제 없음**
-    2. DebugGame 패키징 + VS 디버깅 - **문제 없음**
-    3. Steam 빌드 (Development/Shipping) - **벽돌 스폰 안됨**
-    4. Development 패키징 (로컬 실행) - **벽돌 스폰 안됨**
-  - 시도한 수정:
-    - `WjWorldBrickSpawner::CreateBrickSpawner()`: `LoadObject` → `LoadSynchronous()` 변경
-    - 결과: 여전히 동일한 증상
-  - **원인 확정**: WallLayout `.txt` 파일 경로 문제
-    1. `FFilePath`에 저장된 절대 경로가 패키지 빌드에서 유효하지 않음
-    2. `.txt` 파일이 자동으로 패키지에 포함되지 않음
-  - **수정 내용**:
-    1. `DefaultGame.ini`: `+DirectoriesToAlwaysStageAsNonUFS=(Path="GamePlay/Wall")` 추가
-    2. `WjWorldWallDescriptionDataAsset.cpp`: 절대 경로 → Content 상대 경로 변환 로직 추가
-  - **상태**: ✅ 해결 확인 (패키징 빌드에서 벽돌 스폰 정상 동작)
-
-### 발견된 추가 이슈 (Steam 환경 2PC 테스트)
-1. **[버그] Approaching Wall 종료 후 WaitingRoom 복귀 실패**
-   - 증상: 게임 종료 후 WaitingRoom으로 ServerTravel 안됨
-   - 추정 원인: 하드코딩 경로 수정 시 누락된 부분
-   - 상태: 조사 필요
-
-2. **[버그] LobbyLayout SaveGame 주체 문제**
-   - 증상: 배치하지 않은 클라이언트 기준으로 SaveGame되는 경우 발생
-   - 재현: 재접속 시 상대방의 일부 배치물이 보임
-   - 추정 원인: SaveLayout() 호출 주체 검증 누락
-   - 상태: 조사 필요
-
-3. **[버그] WaitingRoom 코스메틱 리플리케이션 실패**
-   - 증상: WaitingRoom에서 다른 플레이어 코스메틱이 보이지 않음
-   - 참고: Lobby/Play에서는 정상 동작
-   - 상태: 조사 필요
-
-### 학습/메모
-- Steam Dev Comp Package: 파트너 그룹 계정에게 무료로 앱 접근 권한 부여
-- itemdefs.json: 모든 값은 문자열이어야 함 (`false` → `"false"`)
-- **Non-asset 파일 패키징**: `.txt`, `.csv` 등은 `DirectoriesToAlwaysStageAsNonUFS`로 명시적 포함 필요
+### 발견된 이슈 (Steam 2PC 테스트)
+1. **[버그] 클라이언트 마우스 Control Rotation 미적용**
+   - 증상: 멀티 환경에서 클라이언트 마우스 조작으로 Control Rotation이 적용 안 됨
 
 ---
 *마지막 동기화: 2026-02-05*
