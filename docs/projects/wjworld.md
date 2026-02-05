@@ -27,6 +27,7 @@
 - `GameStatePlay`에 게임 전체 데이터 (예: 웨이브 타이밍)
 - `PlayerStatePlay`에 플레이어별 데이터 (예: 점수, 상태)
 - 리플리케이션 지원
+- **ApproachingWallGameDataComponent**: `CurrentWallName` 리플리케이트 (클라이언트 WallDesc 로드용)
 
 ### 미니게임 카탈로그 시스템
 `UWjWorldMinigameDataAsset` 기반 미니게임 정의 및 동적 조회.
@@ -60,7 +61,7 @@ GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아
 - **AbilityBase 공통 기능**: AbilityName, AbilityIcon (UI 메타), GetPromptDescription(), 충전 시스템 인터페이스 (IsChargeBased, GetCurrentCharges, GetMaxCharges, GetChargeRefillTimeRemaining)
 - **GA_NormalAttack**: 4방향 스냅(Yaw 기반) 벽돌 공격, BrickType별 처리 (Standard 파괴 불가, Explosive/Moving/Destructible)
 - **GA_SpawnBrick**: 충전 기반 벽돌 배치, Preview → Confirm/Cancel 패턴, GE 기반 충전 리필, 어트리뷰트 변경 위임
-- **GA_LiftBrick**: 벽돌 재배치 어빌리티, Moving/Destructible 벽돌 들어올리기, Cancel 시 원래 위치 복원
+- **GA_LiftBrick**: 벽돌 재배치 어빌리티, Moving/Destructible 벽돌 들어올리기, Cancel 시 원래 위치 복원, 들고 있는 벽돌 색상 리플리케이션
 - **AttributeSet**: HP, MaxSpawnBrickCharges, SpawnBrickCharges, OnRep 콜백
 - **Effects**: GE_AbilityCooldown (쿨다운), GE_SpawnBrickChargeCost (충전 비용)
 
@@ -148,6 +149,43 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
 
 # WjWorld 개발 로그
 
+## 2026-02-05
+### 작업 내용 - Steam 2PC 테스트 버그 수정
+- **[버그] Approaching Wall 종료 후 WaitingRoom 복귀 실패**
+  - 원인: `OnGameEnd()` 타이머 람다에서 `this` 캡처 후 `GetWorld()` 호출
+  - 수정: `TravelURL` 값 캡처 + `TWeakObjectPtr<UWorld>` 사용
+  - 파일: `WjWorldGameRuleBase.cpp`
+- **[버그] LobbyLayout SaveGame 주체 문제**
+  - 원인: 클라이언트도 `SaveLayout()` 호출하여 호스트 레이아웃 덮어씀
+  - 수정: `NetMode` 체크 추가 (`NM_Standalone` 또는 `NM_ListenServer`만 저장)
+  - 파일: `WjWorldPlacementComponent.cpp`
+- **[버그] WaitingRoom 코스메틱 리플리케이션 실패**
+  - 원인: `GetPawn()` 3자 캐릭터에서 null 반환, 로컬 로드아웃이 모든 캐릭터에 적용
+  - 수정: `TActorIterator`로 PlayerState 기반 캐릭터 검색, 로컬 플레이어만 초기 로드아웃 적용
+  - 파일: `WjWorldCosmeticComponent.cpp`, `WjWorldPlayerStateBase.cpp`
+- **[버그] LiftBrick/SpawnBrick 클라이언트 프리뷰 색상 오류**
+  - 원인: `GetAuthGameMode()` 클라이언트에서 null → `CachedWallDesc` 미설정
+  - 수정: `CurrentWallName` 리플리케이트 추가, `GameState`에서 `WallDesc` 로드
+  - 파일: `ApproachingWallGameDataComponent.h/.cpp`, `WjWorldGameRuleApproachingWall.cpp`, `GA_LiftBrick.cpp`, `GA_SpawnBrick.cpp`
+- **WjWorldAnimInstance 생성**
+  - `LiftBrickBlendWeight` (0~1 float) GameplayTag 기반 블렌딩
+  - `State.LiftBrickCarry` 태그 체크하여 부드러운 전환
+  - 파일: `Animation/WjWorldAnimInstance.h/.cpp`
+- **LiftBrick 벽돌 색상 리플리케이션**
+  - `CarriedBrickColor` 리플리케이트 프로퍼티 추가
+  - `LiftedBrickDynamicMaterial`로 런타임 색상 적용
+  - 파일: `WjWorldCharacterPlay.h/.cpp`
+
+### 학습/메모
+- `GetAuthGameMode()`는 클라이언트에서 null 반환 → GameState의 리플리케이트된 데이터로 폴백
+- ServerTravel URL 포맷: `GetAssetPathString()` (`.MapName` 포함) vs `GetLongPackageName()` (순수 경로)
+- Timer 람다에서 `this` 캡처 주의 → 객체 소멸 후 호출 시 크래시, `TWeakObjectPtr` 사용
+
+### 이슈/해결
+- COMDAT 중복 링크 오류 → Intermediate 폴더 정리 후 재빌드
+
+---
+
 ## 2026-02-04 (저녁)
 ### 작업 내용 - Steam 테스트 환경 구축
 - **Steam 앱 설정 완료**
@@ -209,44 +247,7 @@ Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSub
 - Steam Dev Comp Package: 파트너 그룹 계정에게 무료로 앱 접근 권한 부여
 - itemdefs.json: 모든 값은 문자열이어야 함 (`false` → `"false"`)
 - **Non-asset 파일 패키징**: `.txt`, `.csv` 등은 `DirectoriesToAlwaysStageAsNonUFS`로 명시적 포함 필요
-- **FFilePath 경로 문제**: 에디터에서 절대 경로 저장 → 패키지 빌드에서 `FPaths::ProjectContentDir()` 기준으로 변환 필요
-- **Debug vs Development 빌드 차이**: Debug는 개발 PC 파일 시스템 직접 접근, Development/Shipping은 .pak 파일 사용
-
-### 나중에 논의할 내용
-- **에셋 팩 관리 방법**: 마켓플레이스 에셋 팩 (BigNiagaraBundle, Fantasy_Pack, GJM_Assets, sA_PickupSet_1 등)
-  - .gitignore는 적절하지 않음 (팀원/다른 PC에서 필요)
-  - Git LFS 도입? 별도 저장소? 빌드 파이프라인에서 관리?
-  - 용량 문제와 버전 관리 전략 필요
 
 ---
-
-## 2026-02-04
-### 작업 내용
-- **코스메틱 미리보기/시착 시스템 구현**
-  - CharacterPreviewActor: Socket 기반 메시 부착, StaticMesh/SkeletalMesh 동시 지원
-  - SetupFromPawn()으로 Pawn에서 메시/ABP 복사
-  - 다중 슬롯 시착 유지 (슬롯 전환 시 리셋 안 함)
-- **하드코딩 경로 제거 및 DeveloperSettings 중앙화**
-  - 맵/GameMode/캐릭터/Approaching Wall 에셋 중앙 설정
-  - ConstructorHelpers 제거 → UPROPERTY + DeveloperSettings 폴백 패턴
-- **Approaching Wall 미니게임 완성**
-  - Kills 스탯 추적: LastAttacker 시스템 (CharacterPlay)
-  - 플레이어 이탈 시 캐릭터 Eliminate 처리
-  - 엣지 케이스: 솔로 승리, 동시 제거(무승부), 전원 이탈
-- **코스메틱 상점 UI 구현** (6개 파일 생성)
-  - `CosmeticItemEntryWidget` - 아이템 그리드 엔트리 (아이콘, 이름, 희귀도, 가격)
-  - `CosmeticPreviewPanel` - 3D 캐릭터 프리뷰 (CharacterPreviewActor 재사용)
-  - `CosmeticMainWindow` - 상점/인벤토리 통합 윈도우 (탭 전환, 4열 그리드)
-  - `LobbyHUDWidget`에 코스메틱 버튼 추가
-- **CosmeticSubsystem 초기화 개선**
-  - DeveloperSettings에 `CosmeticCatalog` 프로퍼티 추가
-  - Initialize()에서 자동 로드하도록 수정
-- **CosmeticComponent 개선**
-  - `OnLoadoutChanged` 델리게이트 구독 추가 (실시간 메시 반영)
-  - `CharacterPlay` → `CharacterBase`로 이동 (모든 캐릭터에서 사용 가능)
-- **Socket 기반 코스메틱 부착 시스템 구현**
-  - `FCosmeticItemDefinition`에 부착 설정 추가 (AttachSocketName, LocationOffset, RotationOffset, Scale)
-
----
-*마지막 동기화: 2026-02-04*
+*마지막 동기화: 2026-02-05*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
