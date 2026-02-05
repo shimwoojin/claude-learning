@@ -6,6 +6,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-05 | WjWorld | [GA_Jump 어빌리티 구현 & 패키징 빌드 스크립트 수정](./2026-02-05-wjworld-ga-jump-packaging-fix.md) | #GAS #Ability #Jump #Packaging #BatchScript #UE5 |
 | 2026-02-05 | WjWorld | [Sumo Knockoff 6대 기능 구현](./2026-02-05-wjworld-sumo-6-features.md) | #Minigame #Sumo #GAS #Replication #GameRule #PowerUp #UE5 |
 | 2026-02-05 | WjWorld | [Sumo Knockoff 미니게임 구현 & LAN SocketSubsystem 수정](./2026-02-05-wjworld-sumo-minigame-lan-fix.md) | #Minigame #GameRule #GAS #Networking #LAN #SocketSubsystem |
 | 2026-02-05 | WjWorld | [Steam P2P 네트워킹 (SteamNetDriver) 문제 해결](./2026-02-05-wjworld-steam-netdriver-fix.md) | #steam #networking #netdriver #multiplayer #config |
