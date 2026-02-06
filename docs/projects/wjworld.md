@@ -219,7 +219,73 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 # WjWorld 개발 로그
 
 ## 2026-02-06
-### 작업 내용 - 배치 시스템 다중 컨텍스트 확장 & AW Editor CSV 연동
+### 작업 내용 - Steam 2PC 버그 수정 (2차)
+
+#### 버그 수정 (High → Medium 해결)
+
+##### [해결] #16 Sumo 코스메틱 전이 버그
+- **증상**: 호스트가 Sumo에서 죽고 리스폰되면 호스트 코스메틱이 다른 플레이어에게 적용됨
+- **원인**: `PossessedBy()`에서 `CosmeticSub->GetLoadout()`이 항상 서버의 로드아웃 반환
+- **수정**: 로드아웃이 이미 있으면 덮어쓰지 않음 + 로컬 컨트롤러만 초기 로드아웃 설정
+- **파일**: `WjWorldCharacterPlay.cpp` (lines 186-213)
+```cpp
+// 리스폰 시 PlayerState에 이미 로드아웃이 있으면 덮어쓰지 않음
+if (PS->GetCosmeticLoadout().Entries.IsEmpty())
+{
+    APlayerController* PC = Cast<APlayerController>(NewController);
+    if (PC && PC->IsLocalController())
+    {
+        PS->SetCosmeticLoadout(CosmeticSub->GetLoadout());
+    }
+}
+```
+
+##### [해결] #2 호스트 설정 패널 클라이언트 표시 버그
+- **증상**: 호스트 설정 패널이 클라이언트 UI에도 표시됨
+- **원인**: `SessionManager->IsHost()` 값이 클라이언트에서 잘못 반환되는 경우 있음
+- **수정**: `GetNetMode()` 추가 체크 - NM_Client이면 무조건 bIsHost = false
+- **파일**: `WaitingRoomHUDWidget.cpp` (UpdateHostSettingsPanelVisibility)
+
+##### [해결] #11 3자 프로필 스탯 조회 안됨
+- **증상**: 다른 플레이어 프로필 열어도 스탯이 로드되지 않음
+- **원인**: `OnSteamUserStatsReceived()`에서 빈 `FUniqueNetIdRepl` 브로드캐스트
+- **수정**: Steam OSS `IdentityInterface`로 유효한 FUniqueNetIdRepl 생성
+- **파일**: `WjWorldStatsSubsystem.cpp` (OnSteamUserStatsReceived)
+```cpp
+IOnlineSubsystem* OSS = IOnlineSubsystem::Get(STEAM_SUBSYSTEM);
+if (OSS)
+{
+    IOnlineIdentityPtr IdentityInterface = OSS->GetIdentityInterface();
+    if (IdentityInterface.IsValid())
+    {
+        UserIdRepl = FUniqueNetIdRepl(IdentityInterface->CreateUniquePlayerId(UserIdStr));
+    }
+}
+OnUserStatsReceived.Broadcast(UserIdRepl);
+```
+
+##### [디버깅] #1 WaitingRoom 설정 변경 시 UI 미갱신
+- **상태**: 디버깅용 로그 추가, 테스트 필요
+- **파일**: `WaitingRoomHUDWidget.cpp` (UpdateRoomInfo)
+
+##### [디버깅] #10 AW 코스메틱 3자에게 잠시 보임
+- **상태**: 디버깅용 로그 추가, 테스트 필요
+- **파일**: `WjWorldCosmeticComponent.cpp` (ApplyLoadout)
+
+### 학습/메모
+- **서버 측 로드아웃 관리 주의**: `CosmeticSubsystem->GetLoadout()`은 항상 로컬(서버) 로드아웃 반환 → 리스폰 시 다른 플레이어에게 적용 위험
+- **IsHost() 신뢰성**: SessionManager의 IsHost() 외에도 GetNetMode() 이중 체크 권장
+- **FUniqueNetIdRepl 생성**: Steam SteamId → FUniqueNetIdRepl 변환 시 OSS IdentityInterface 사용
+
+### 이슈/해결
+- [해결] #16 Sumo 코스메틱 전이 → 로드아웃 존재 여부 + 로컬 컨트롤러 체크
+- [해결] #2 호스트 설정 패널 클라이언트 표시 → NetMode 이중 체크
+- [해결] #11 3자 프로필 스탯 → FUniqueNetIdRepl 올바른 생성
+- [테스트 필요] #1 UI 미갱신, #10 코스메틱 잠시 보임
+
+---
+
+### 작업 내용 - 배치 시스템 다중 컨텍스트 확장 & AW Editor CSV 연동 & 대기실 호스트 설정 UI
 
 #### 배치 시스템 → AW 게임플레이 연동
 - **PlacementComponent CSV 내보내기** (`WjWorldPlacementComponent.cpp`)
@@ -250,72 +316,6 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - **`ue-log-analyzer` 에이전트** (`.claude/agents/ue-log-analyzer/`)
   - 심층 로그 분석: 크래시, 패턴 감지, 네트워크 이슈
 
-#### ue-build-runner 에이전트 제약 추가
-- **문제**: 빌드 검증 요청 시 에이전트가 프로젝트 파일을 수정 시도 (UE 5.7 → 5.5 다운그레이드)
-- **수정**: SKILL.md에 명확한 제약 추가
-  - 파일 수정 금지 (분석/보고만)
-  - 프로젝트 파일(.uproject, Target.cs) 수정 금지
-  - 엔진 버전 변경 시도 금지
-
-### 학습/메모
-- **에이전트 제약의 중요성**: tools에 Bash가 있으면 sed/echo로 파일 수정 가능 → 명시적 금지 필요
-- **벽 레이아웃 유효성 검사**: 경계에서 시작하는 Flood Fill로 외부 영역을 먼저 마킹해야 함
-
-### 이슈/해결
-- [해결] ue-build-runner가 수정한 파일 git checkout으로 복원
-- [해결] WallLayoutConverter 외부/내부 영역 구분 로직 구현
-- [해결] FWjWorldWallDescription::FindStartingEmptyCell 동일 버그 수정 (벽돌 스폰 안됨)
-- [해결] CreateRoomWindow 유저 맵 표시 시 URL 콜론(:) 문제 → User_ 접두사로 변경
-- [해결] AW 그리드 스냅 인접 배치 불가 → GridOverlapCheckRadius(5) 분리
-
-### 알려진 이슈 (미해결)
-- **Approaching Wall 멀티플레이어 플레이어 이탈 처리**
-  - 호스트 강제 종료 시: 클라이언트 남은 인원 처리 안됨, Host Migration 안됨
-  - 클라이언트 접속 종료 시: 남은 인원 수 미업데이트, 1명 남아도 승리 조건 미적용
-  - 관련 코드: `OnPlayerLeft()`, `CheckWinCondition()`, Host Migration 시스템
-
----
-
-## 2026-02-05
-### 작업 내용 - Steam 출시 Polishing & 네트워크 모드 토글
-
-#### LAN/Steam 네트워크 모드 토글 기능
-- **ENetworkMode enum 추가** (`SessionTypes.h`)
-  - `LAN`, `Steam` 두 가지 모드 지원
-- **SessionManager 네트워크 모드 분기**
-  - LAN: `bIsLANMatch=true`, `bUsesPresence=false`
-  - Steam: `bIsLANMatch=false`, `bUsesPresence=true`, `bUseLobbiesIfAvailable=true`
-  - `CreateSession()`, `FindSessions()`, `CreateMigrationSession()`, `FindMigrationSession()` 모두 적용
-- **UI 지원**
-  - `CreateRoomWindow`: `NetworkModeComboBox` 추가 (WITH_STEAM 빌드에서만 Steam 옵션 표시)
-  - `RoomListWindow`: `SetNetworkMode()`, `ShowPopupWithNetworkMode()` 추가
-
-#### Steam 출시 Polishing (크래시 안전성 & 코드 품질)
-- **Critical null 체크 추가** (6개 파일)
-  - `OnRep_IsGameStartCountDownReady()`, `OnRep_GameResult()` 등
-- **빈 Tick() 비활성화** - `bCanEverTick = false` 설정
-- **로그 카테고리 일관성** - `LogWjWorld` → `LogWjWorldStats`
-- **check() → ensureMsgf() 변경** - 릴리스 빌드 크래시 방지
-- **AttributeSet OnRep 매크로 추가** - `GAMEPLAYATTRIBUTE_REPNOTIFY`
-
-#### Steam 2PC 테스트 버그 수정
-- **[버그] Approaching Wall 종료 후 WaitingRoom 복귀 실패**
-  - 원인: `OnGameEnd()` 타이머 람다에서 `this` 캡처 후 `GetWorld()` 호출
-  - 수정: `TravelURL` 값 캡처 + `TWeakObjectPtr<UWorld>` 사용
-  - 파일: `WjWorldGameRuleBase.cpp`
-- **[버그] LobbyLayout SaveGame 주체 문제**
-  - 원인: 클라이언트도 `SaveLayout()` 호출하여 호스트 레이아웃 덮어씀
-  - 수정: `NetMode` 체크 추가 (`NM_Standalone` 또는 `NM_ListenServer`만 저장)
-  - 파일: `WjWorldPlacementComponent.cpp`
-- **[버그] WaitingRoom 코스메틱 리플리케이션 실패**
-  - 원인: `GetPawn()` 3자 캐릭터에서 null 반환, 로컬 로드아웃이 모든 캐릭터에 적용
-  - 수정: `TActorIterator`로 PlayerState 기반 캐릭터 검색, 로컬 플레이어만 초기 로드아웃 적용
-  - 파일: `WjWorldCosmeticComponent.cpp`, `WjWorldPlayerStateBase.cpp`
-- **[버그] LiftBrick/SpawnBrick 클라이언트 프리뷰 색상 오류**
-  - 원인: `GetAuthGameMode()` 클라이언트에서 null → `CachedWallDesc` 미설정
-  - 수정: `CurrentWallName` 리플리케이트 추가, `GameState`에서 `WallDesc` 로드
-  - 파일: `ApproachingWallGameDataComponent.h/.cpp`, `WjWorldGameRuleApproachingWall.cpp`, `GA_LiftBrick.cpp`, `GA_SpawnBrick.cpp`
-- **WjWorldAnimInstance 생성**
 
 ---
 *마지막 동기화: 2026-02-06*
