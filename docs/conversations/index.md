@@ -6,6 +6,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-06 | WjWorld | [Steam 2PC 버그 수정 3차 - 전체 해결](./2026-02-06-wjworld-steam-bugfix-session4.md) | #bugfix #multiplayer #collision #rpc #widget #metadata |
 | 2026-02-06 | WjWorld | [Steam 2PC 버그 수정 2차 (#2,#11,#16)](./2026-02-06-wjworld-steam-bugfix-session3.md) | #bugfix #multiplayer #cosmetic #stats #waitingroom |
 | 2026-02-06 | WjWorld | [Steam 빌드 테스트 버그 수정 (#4,#5,#8,#12)](./2026-02-06-wjworld-steam-bugfix-session2.md) | #bugfix #multiplayer #replication #networking |
 | 2026-02-06 | WjWorld | [WaitingRoomHUDWidget 호스트 설정 패널 버그 수정](./2026-02-06-wjworld-waitingroom-host-settings-fix.md) | #UnrealEngine #UMG #버그수정 #위젯바인딩 |
