@@ -45,7 +45,7 @@
 - **PlacedObjectActor**: 실제 배치된 오브젝트, 삭제 모드 하이라이트
 - **PlaceableObjectDataAsset**: 배치 가능 오브젝트 카탈로그 (`FPlaceableObjectDefinition`)
 - **LayoutSaveGame**: `USaveGame` 기반 레이아웃 저장/로드 (`LobbyLayout` 슬롯)
-- **GameStateLobby**: 배치 오브젝트 리플리케이션 (`TArray<FPlacedObjectSaveEntry>`)
+- **GameStateLobby**: 배치 오브젝트 리플리케이션 (TArray 기반 FPlacedObjectSaveEntry)
 - **입력**: LMB(배치), R(회전), DEL(삭제), ESC(종료)
 
 ### Approaching Wall 미니게임
@@ -235,7 +235,7 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 #### Steam 2PC 테스트 버그 수정
 - **[버그] Approaching Wall 종료 후 WaitingRoom 복귀 실패**
   - 원인: `OnGameEnd()` 타이머 람다에서 `this` 캡처 후 `GetWorld()` 호출
-  - 수정: `TravelURL` 값 캡처 + `TWeakObjectPtr<UWorld>` 사용
+  - 수정: `TravelURL` 값 캡처 + TWeakObjectPtr 사용
   - 파일: `WjWorldGameRuleBase.cpp`
 - **[버그] LobbyLayout SaveGame 주체 문제**
   - 원인: 클라이언트도 `SaveLayout()` 호출하여 호스트 레이아웃 덮어씀
@@ -301,7 +301,7 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 
 #### Sumo Knockoff 6대 기능 추가 구현
 - **1. Push 히트 피드백** (`GA_Push.h/.cpp`)
-  - `PushHitCameraShake` (TSubclassOf<UCameraShakeBase>) 프로퍼티 추가
+  - `PushHitCameraShake` (TSubclassOf CameraShake) 프로퍼티 추가
   - 피격자에게 `ClientStartCameraShake()` 호출
   - `SuperPushMultiplier` (기본 2.0) - Buff.SuperPush 태그 보유 시 Force 배율 적용 후 태그 소모
 - **2. 킬피드 시스템** (`SumoGameDataComponent`, `SumoHUDWidget`)
