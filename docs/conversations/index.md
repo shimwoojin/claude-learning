@@ -6,6 +6,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-06 | WjWorld | [Steam 빌드 테스트 버그 수정 (#4,#5,#8,#12)](./2026-02-06-wjworld-steam-bugfix-session2.md) | #bugfix #multiplayer #replication #networking |
 | 2026-02-06 | WjWorld | [WaitingRoomHUDWidget 호스트 설정 패널 버그 수정](./2026-02-06-wjworld-waitingroom-host-settings-fix.md) | #UnrealEngine #UMG #버그수정 #위젯바인딩 |
 | 2026-02-06 | WjWorld | [AW Editor CSV 내보내기 & 유효성 검사 버그 수정](./2026-02-06-wjworld-placement-csv-export.md) | #Placement #CSV #WallLayout #FloodFill #Agent #UE5 |
 | 2026-02-05 | WjWorld | [GA_Jump 어빌리티 구현 & 패키징 빌드 스크립트 수정](./2026-02-05-wjworld-ga-jump-packaging-fix.md) | #GAS #Ability #Jump #Packaging #BatchScript #UE5 |
