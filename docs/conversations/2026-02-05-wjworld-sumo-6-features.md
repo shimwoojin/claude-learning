@@ -23,11 +23,11 @@ Sumo Knockoff 미니게임에 6대 핵심 기능(Push 히트 피드백, 킬피�
 
 ## 학습 내용
 
-### TArray<TObjectPtr<T>>::Sort() UE 5.7 호환성
+### TArray Sort() UE 5.7 호환성
 - UE 5.7에서 `TObjectPtr` 생성자로부터의 reference 생성이 deprecated
-- `TArray<TObjectPtr<T>>::Sort()` 사용 시 내부 swap에서 deprecation warning 발생
-- 해결: `TArray<T*>`로 변경하면 warning 없이 동작
-- `TArray<T*>::Sort()` 내부에서 `TDereferenceWrapper` 사용 → 람다 파라미터는 `const T&` (포인터 아님, `.` 연산자 사용)
+- TObjectPtr 배열의 Sort() 사용 시 내부 swap에서 deprecation warning 발생
+- 해결: raw pointer 배열로 변경하면 warning 없이 동작
+- Sort 내부에서 `TDereferenceWrapper` 사용 → 람다 파라미터는 역참조된 레퍼런스 (포인터 아님, `.` 연산자 사용)
 
 ### InheritableOwnedTagsContainer deprecated (UE 5.7)
 - GE 생성자에서 `InheritableOwnedTagsContainer.AddTag()` 더 이상 사용 불가
