@@ -38,19 +38,26 @@
 - **동적 GameRule 조회**: `GameModePlay::InitGame()`에서 URL Options의 `GameModeId`로 카탈로그 조회
 - **DeveloperSettings 참조**: `MinigameCatalog` 소프트 참조
 
-### 로비 배치 시스템
-로비에서 오브젝트를 배치/삭제하고 저장하는 시스템. 멀티플레이어 지원.
-- **PlacementComponent**: `PlayerControllerLobby`에 부착, 배치 핵심 로직, EnhancedInput 바인딩
+### 다중 컨텍스트 배치 시스템
+Lobby / ApproachingWall / JumpMap 3개 컨텍스트를 지원하는 확장된 배치 시스템.
+- **EPlacementContext**: `None`, `Lobby`, `ApproachingWall`, `JumpMap` 열거형
+- **IWjWorldPlacementDataProvider**: GameState 추상화 인터페이스 (AddPlacedObject, RemovePlacedObjectAt, GetPlacedObjects)
+- **PlacementComponent**: 컨텍스트 지원, `SaveLayoutToSlot()`/`LoadLayoutFromSlot()`, `GetSavedLayoutSlots()`, `LoadedSlotName` 추적
 - **PlacementPreviewActor**: 배치 프리뷰 (유효/무효 색상), `FStreamableManager` 비동기 메시 로드
 - **PlacedObjectActor**: 실제 배치된 오브젝트, 삭제 모드 하이라이트
-- **PlaceableObjectDataAsset**: 배치 가능 오브젝트 카탈로그 (`FPlaceableObjectDefinition`)
-- **LayoutSaveGame**: `USaveGame` 기반 레이아웃 저장/로드 (`LobbyLayout` 슬롯)
-- **GameStateLobby**: 배치 오브젝트 리플리케이션 (TArray 기반 FPlacedObjectSaveEntry)
+- **PlaceableObjectDataAsset**: 컨텍스트별 배치 가능 오브젝트 카탈로그 (`FPlaceableObjectDefinition`)
+- **LayoutSaveGame**: `USaveGame` 기반 레이아웃 저장/로드 (컨텍스트별 SaveSlot: `LobbyLayout`, `ApproachingWallLayout`, `JumpMapLayout`)
+- **GameStateLobby**: 배치 오브젝트 리플리케이션 (`TArray<FPlacedObjectSaveEntry>`)
 - **입력**: LMB(배치), R(회전), DEL(삭제), ESC(종료)
+- **에디터 모드**: AWEditor, JumpMapEditor 전용 GameMode/GameState/HUD
+- **WallLayoutConverter**: AW 컨텍스트용 배치 오브젝트 → WallLayout CSV 변환, 외부/내부 영역 구분 유효성 검사
+- **CSV 내보내기**: `ExportLayoutAsCSV()` - SaveGame 저장 시 CSV 파일도 자동 내보내기 (`Content/WallLayouts/User/`)
+- **유저 레이아웃 자동 스캔**: `WallDescriptionDataAsset`에서 유저 CSV 디렉토리 런타임 스캔, 내장+유저 레이아웃 통합 지원
 
 ### Approaching Wall 미니게임
 첫 번째 미니게임. 벽이 점진적으로 다가오며 플레이어들이 안전 구역으로 이동해야 하는 PvP 게임.
-- **BrickSpawner**: 데이터 에셋 기반 비동기 벽돌 스폰 (8개/틱)
+- **BrickSpawner**: 데이터 에셋 기반 비동기 벽돌 스폰 (8개/틱), 내장+유저 레이아웃 통합 지원
+- **WallDescriptionDataAsset**: 내장 레이아웃 + 유저 레이아웃 자동 스캔 (`ScanUserWallLayouts()`, `GetWallDescriptionByNameIncludingUser()`)
 - **BrickMovement**: 개별 벽돌 이동 로직 (경로 탐색)
 - **WallManager**: 벽 이동 진행 관리 (레벨별 속도 조절)
 - **레벨 시스템**: 12초마다 레벨업, 이동 시간 5초→1초 (10레벨)
@@ -196,12 +203,13 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 
 ### WjWorldDeveloperSettings (중앙 설정)
 에디터에서 설정 가능한 중앙 집중식 에셋/클래스 참조. Project Settings > Game > WjWorld Developer Settings에서 설정.
-- **맵**: LobbyMapPath
-- **GameMode 클래스**: WaitingRoomGameModeClass, PlayGameModeClass
+- **맵**: LobbyMapPath, AWEditorMapPath, JumpMapEditorMapPath
+- **GameMode 클래스**: WaitingRoomGameModeClass, PlayGameModeClass, AWEditorGameModeClass, JumpMapEditorGameModeClass
 - **캐릭터 기본값**: DefaultCharacterMesh, DefaultAnimBlueprintClass, DefaultInputMappingContext
 - **Approaching Wall**: BrickMesh, TileMesh, WallDescriptionAsset
-- **카탈로그**: MinigameCatalog, CosmeticCatalog, PlaceableObjectCatalog
-- **헬퍼 함수**: GetLobbyMapPath(), GetWaitingRoomOpenLevelURL(), GetPlayServerTravelURL()
+- **배치 카탈로그**: LobbyPlaceableCatalog, ApproachingWallPlaceableCatalog, JumpMapPlaceableCatalog
+- **기타 카탈로그**: MinigameCatalog, CosmeticCatalog
+- **헬퍼 함수**: GetLobbyMapPath(), GetWaitingRoomOpenLevelURL(), GetPlayServerTravelURL(), GetPlaceableCatalogForContext(), GetEditorMapOpenLevelURL(), HasEditorMapForContext()
 
 **설정 우선순위 패턴**: BP 서브클래스 UPROPERTY 값 우선 → DeveloperSettings 폴백
 
@@ -209,6 +217,64 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 ## 최근 개발 로그
 
 # WjWorld 개발 로그
+
+## 2026-02-06
+### 작업 내용 - 배치 시스템 다중 컨텍스트 확장 & AW Editor CSV 연동
+
+#### 배치 시스템 → AW 게임플레이 연동
+- **PlacementComponent CSV 내보내기** (`WjWorldPlacementComponent.cpp`)
+  - AW 컨텍스트에서 저장 시 CSV 파일도 자동 내보내기
+  - `ExportLayoutAsCSV()` 메서드 추가
+  - 저장 경로: `Content/WallLayouts/User/`
+- **WallDescriptionDataAsset 유저 레이아웃 스캔** (`WjWorldWallDescriptionDataAsset.cpp`)
+  - `ScanUserWallLayouts()`: 유저 CSV 디렉토리 자동 스캔
+  - `GetAllWallNames()`: 내장 + 유저 레이아웃 통합 목록
+  - `GetWallDescriptionByNameIncludingUser()`: 유저 레이아웃 포함 검색
+  - `GenerateRandomWallNameIncludingUser()`: 유저 레이아웃 포함 랜덤 선택
+- **BrickSpawner 유저 레이아웃 지원** (`WjWorldBrickSpawner.cpp`)
+  - `SpawnBricksFromWallNameAsync()`: 유저 레이아웃 검색 연동
+  - `GenerateRandomWallName()`: 유저 레이아웃 포함
+
+#### WallLayoutConverter 버그 수정
+- **[버그] ValidateWallLayout 시작점 오인 문제**
+  - 원인: 첫 번째 -1 셀을 시작점으로 사용 → 외곽 빈 공간이 시작점이 됨
+  - 문제: Padding 추가 시 모든 레이아웃이 "열려있음"으로 오판
+  - 수정: 외부/내부 영역 분리 로직
+    - `MarkExteriorCells()`: 경계에서 Flood Fill로 외부 영역 마킹
+    - `FindInteriorEmptyCell()`: 외부가 아닌 빈 셀 = 내부 영역 찾기
+  - 파일: `WjWorldWallLayoutConverter.cpp/.h`
+
+#### 로그 검토 도구 추가
+- **`/log` 스킬** (`.claude/commands/log.md`)
+  - 빠른 로그 검토: `/log`, `/log error`, `/log placement`, `/log warning`
+- **`ue-log-analyzer` 에이전트** (`.claude/agents/ue-log-analyzer/`)
+  - 심층 로그 분석: 크래시, 패턴 감지, 네트워크 이슈
+
+#### ue-build-runner 에이전트 제약 추가
+- **문제**: 빌드 검증 요청 시 에이전트가 프로젝트 파일을 수정 시도 (UE 5.7 → 5.5 다운그레이드)
+- **수정**: SKILL.md에 명확한 제약 추가
+  - 파일 수정 금지 (분석/보고만)
+  - 프로젝트 파일(.uproject, Target.cs) 수정 금지
+  - 엔진 버전 변경 시도 금지
+
+### 학습/메모
+- **에이전트 제약의 중요성**: tools에 Bash가 있으면 sed/echo로 파일 수정 가능 → 명시적 금지 필요
+- **벽 레이아웃 유효성 검사**: 경계에서 시작하는 Flood Fill로 외부 영역을 먼저 마킹해야 함
+
+### 이슈/해결
+- [해결] ue-build-runner가 수정한 파일 git checkout으로 복원
+- [해결] WallLayoutConverter 외부/내부 영역 구분 로직 구현
+- [해결] FWjWorldWallDescription::FindStartingEmptyCell 동일 버그 수정 (벽돌 스폰 안됨)
+- [해결] CreateRoomWindow 유저 맵 표시 시 URL 콜론(:) 문제 → User_ 접두사로 변경
+- [해결] AW 그리드 스냅 인접 배치 불가 → GridOverlapCheckRadius(5) 분리
+
+### 알려진 이슈 (미해결)
+- **Approaching Wall 멀티플레이어 플레이어 이탈 처리**
+  - 호스트 강제 종료 시: 클라이언트 남은 인원 처리 안됨, Host Migration 안됨
+  - 클라이언트 접속 종료 시: 남은 인원 수 미업데이트, 1명 남아도 승리 조건 미적용
+  - 관련 코드: `OnPlayerLeft()`, `CheckWinCondition()`, Host Migration 시스템
+
+---
 
 ## 2026-02-05
 ### 작업 내용 - Steam 출시 Polishing & 네트워크 모드 토글
@@ -235,7 +301,7 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 #### Steam 2PC 테스트 버그 수정
 - **[버그] Approaching Wall 종료 후 WaitingRoom 복귀 실패**
   - 원인: `OnGameEnd()` 타이머 람다에서 `this` 캡처 후 `GetWorld()` 호출
-  - 수정: `TravelURL` 값 캡처 + TWeakObjectPtr 사용
+  - 수정: `TravelURL` 값 캡처 + `TWeakObjectPtr<UWorld>` 사용
   - 파일: `WjWorldGameRuleBase.cpp`
 - **[버그] LobbyLayout SaveGame 주체 문제**
   - 원인: 클라이언트도 `SaveLayout()` 호출하여 호스트 레이아웃 덮어씀
@@ -250,65 +316,7 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
   - 수정: `CurrentWallName` 리플리케이트 추가, `GameState`에서 `WallDesc` 로드
   - 파일: `ApproachingWallGameDataComponent.h/.cpp`, `WjWorldGameRuleApproachingWall.cpp`, `GA_LiftBrick.cpp`, `GA_SpawnBrick.cpp`
 - **WjWorldAnimInstance 생성**
-  - `LiftBrickBlendWeight` (0~1 float) GameplayTag 기반 블렌딩
-  - `State.LiftBrickCarry` 태그 체크하여 부드러운 전환
-  - 파일: `Animation/WjWorldAnimInstance.h/.cpp`
-- **LiftBrick 벽돌 색상 리플리케이션**
-  - `CarriedBrickColor` 리플리케이트 프로퍼티 추가
-  - `LiftedBrickDynamicMaterial`로 런타임 색상 적용
-  - 파일: `WjWorldCharacterPlay.h/.cpp`
-
-#### Steam P2P 네트워킹 (SteamNetDriver) 문제 해결
-- **SessionManager::Initialize() 폴백 로직 추가**
-  - `IOnlineSubsystem::Get(STEAM_SUBSYSTEM)` 우선 시도 → 실패 시 `NULL_SUBSYSTEM` 폴백
-  - `#include "OnlineSubsystemNames.h"` 추가
-- **steam_appid.txt 패키징 빌드 누락**
-  - 증상: `SteamAPI failed to initialize`, `[AppId: 0]`
-  - 수정: 패키징 빌드 폴더에 수동 복사 → 이후 자동화 배치에 포함
-- **bUsesPresence/bUseLobbiesIfAvailable 매칭**
-  - Steam OSS에서 두 값이 다르면 세션 생성 실패
-  - 수정: Steam 모드에서 둘 다 `true`로 설정
-- **검색 타이밍 이슈 해결**
-  - 증상: LAN 검색 진행 중 Steam 전환 시 "Ignoring game search request while one is pending"
-  - 수정: `bIsSearchInProgress` 플래그 + `PendingSearchRequest` 큐 패턴
-  - `CancelFindSessions()` 사용 시 앱 행 → 제거하고 wait-and-queue 패턴 채택
-- **SteamNetDriver 로딩 안됨 근본 원인 3가지 수정**
-  1. Config 섹션: `[/Script/Engine.GameEngine]` → `[/Script/Engine.Engine]` (BaseEngine.ini와 동일)
-  2. DriverClassName: `"SocketSubsystemSteamIP.SteamNetDriver"` → `"/Script/SocketSubsystemSteamIP.SteamNetDriver"` (StaticLoadClass 정규 경로)
-  3. `[OnlineSubsystemSteam]`에 `bUseSteamNetworking=true` 추가 (Steam 소켓 서브시스템 등록 조건)
-- **NetConnectionClassName도 `/Script/` 접두사 형식으로 통일**
-- **BeaconNetDriver, DemoNetDriver 재정의** (ClearArray 후 누락 방지)
-
-#### 빌드 자동화
-- **PackageAndUploadSteam.bat 생성** (`Batch/`)
-  - Development Win64 패키징 → `Steam/content/` 복사 → `upload.bat` 실행
-  - 각 단계 실패 시 즉시 중단, `steam_appid.txt` 자동 생성
-
-#### Sumo Knockoff 미니게임 코드 구현 (기본)
-- **GA_Push 어빌리티** (`AbilitySystem/Abilities/GA_Push.h/.cpp`)
-  - 전방 구형 오버랩 → 히트 캐릭터에 `LaunchCharacter()` 넉백
-  - PushForce=1200, PushRange=300, PushUpForce=400, CooldownDuration=1.5s
-  - `SetLastAttacker()` 호출 (킬 추적), GameplayCue 트리거
-- **WjWorldGameRuleSumo** (`Core/GameRule/WjWorldGameRuleSumo.h/.cpp`)
-  - TickGameRule에서 매 프레임 Z 위치 체크 → FallThresholdZ(-500) 미만 시 Eliminate
-  - 엣지 케이스: 솔로 자동 승리, 동시 탈락, 전원 이탈
-- **SumoGameDataComponent / SumoPlayerDataComponent** (`Core/GameData/`)
-  - 게임: AlivePlayerCount, TotalPlayerCount (Replicated)
-  - 플레이어: bIsAlive (Replicated + OnRep + Delegate)
-- **GameplayTag 추가**: `Ability.Push`, `Cooldown.Push`, `GameplayCue.Ability.Push`
-- **WjTypes**: `EWjWorldAbilityInputID::Ability6 = 6` 추가
-- **WjWorldStatTypes**: `WjWorldStats::Sumo` 네임스페이스 + Sumo 디스크립터
-
-#### Sumo Knockoff 6대 기능 추가 구현
-- **1. Push 히트 피드백** (`GA_Push.h/.cpp`)
-  - `PushHitCameraShake` (TSubclassOf CameraShake) 프로퍼티 추가
-  - 피격자에게 `ClientStartCameraShake()` 호출
-  - `SuperPushMultiplier` (기본 2.0) - Buff.SuperPush 태그 보유 시 Force 배율 적용 후 태그 소모
-- **2. 킬피드 시스템** (`SumoGameDataComponent`, `SumoHUDWidget`)
-  - `LastKillFeedText` + `KillFeedCounter` (ReplicatedUsing) → 클라이언트 자동 동기화
-  - `FOnSumoKillFeed` 델리게이트 → HUD에서 3초 표시 후 자동 숨김
-  - GameRuleSumo에서 Eliminate 시 "{Killer} knocked out {Victim}" 브로드캐스트
 
 ---
-*마지막 동기화: 2026-02-05*
+*마지막 동기화: 2026-02-06*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
