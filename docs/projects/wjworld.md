@@ -218,6 +218,78 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 
 # WjWorld 개발 로그
 
+## 2026-02-07
+### 작업 내용 - Steam 4차 버그 수정 + 코드 검증 + Agent Teams 테스트
+
+#### 버그 수정 (커밋 263031b)
+
+##### [해결] GamePhase 어빌리티 제한
+- **증상**: 게임 시작 전/종료 후에도 어빌리티 사용 가능
+- **수정**: `CanActivateAbility()`에서 `GamePhase != Playing` 체크 추가
+- **파일**: `WjWorldGameplayAbilityBase.cpp`
+
+##### [해결] 유저 맵 클라이언트 벽돌 스폰 위치 오류
+- **증상**: 유저 커스텀 맵에서 클라이언트 벽돌이 엉뚱한 위치에 스폰
+- **수정**: `GetWallDescriptionByName` → `GetWallDescriptionByNameIncludingUser`로 변경
+- **파일**: `GA_SpawnBrick.cpp`, `GA_LiftBrick.cpp`
+
+##### [해결] BrickComponent collision 분리
+- **증상**: TileActor overlap 감지 실패 (나이아가라 근거없이 출력)
+- **수정**: BrickMeshComponent를 QueryOnly+Overlap으로, BlockingCollisionComponent(95%)는 BlockAll로 분리
+- **파일**: `WjWorldBrickComponent.cpp`
+
+##### [해결] WaitingRoom 호스트 설정 UI
+- **증상**: 호스트 설정 패널이 클라이언트에도 표시 + Apply 후 Display 미갱신
+- **수정**: 패널 호스트 전용 표시 + Apply 후 `UpdateRoomInfo()` 명시적 호출
+- **파일**: `WaitingRoomHUDWidget.cpp`
+
+##### [해결] 3자 프로필 스탯 조회 실패
+- **증상**: 타 플레이어 프로필 스탯이 "Loading..." 상태로 멈춤
+- **원인**: `RequestUserStats()` 반환값 무시, CCallResult 미등록
+- **수정**: `CCallResult<UWjWorldStatsSubsystem, UserStatsReceived_t>` 패턴 적용
+- **파일**: `WjWorldStatsSubsystem.h/cpp`
+
+##### [해결] ParseWallLayout 메타데이터 파싱 누락
+- **증상**: 유저 커스텀 맵 preview offset 어긋남
+- **수정**: `#META:CenterOffset:` 주석 라인 파싱 로직 추가
+- **파일**: `WjWorldWallDescriptionDataAsset.cpp`
+
+##### [해결] 제거 시 관전 전환 없음
+- **증상**: 제거 후 화면 멈춤 (관전 시스템 미구현)
+- **수정**: `HandleEliminationEffects()`에서 살아있는 플레이어로 `SetViewTargetWithBlend()` 전환
+- **파일**: `WjWorldCharacterPlay.cpp`
+
+##### [해결] Lobby HUD 정리
+- **수정**: FindRoomButton 숨김 처리 (BindWidgetOptional), 그래픽 품질 사이클 설정 구현
+- **파일**: `LobbyHUDWidget.h/cpp`
+
+#### GAS 버그 수정 (커밋 0d323ff)
+
+##### [해결] GA_Jump Super::ActivateAbility() 누락
+- **증상**: LocalPredicted 정책에서 Prediction Key 생성 실패 가능
+- **수정**: `Super::ActivateAbility()` 호출 추가
+- **파일**: `GA_Jump.cpp`
+
+#### 코드 검증 (4개 병렬 subagent)
+- **네트워크 리플리케이션**: 문제 없음 (20+ 파일 검증)
+- **GAS 어빌리티**: GA_Jump Super 누락 발견 → 즉시 수정
+- **GameRule 라이프사이클**: 문제 없음 (프로덕션 레벨)
+- **null 포인터/메모리 안전성**: BrickComponent GetGameModePlay() null 체크 권장 (실제 크래시 확률 낮음)
+
+### 학습/메모
+- **Claude Code Agent Teams**: Opus 4.6에서 실험적 기능으로 추가. `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` + `teammateMode` 설정 필요
+  - `"tmux"`: split-pane 모드 (Windows 미지원)
+  - `"in-process"`: 메인 터미널에서 실행 (Windows 권장)
+  - Subagent vs Teams: 독립 작업은 subagent가 효율적, 상호 소통 필요한 대규모 작업은 teams
+  - 자동 팀 구성은 불가 - 명시적 요청 필요
+- **Steam CCallResult 패턴**: `SteamAPICall_t` 반환값을 `CCallResult<>.Set()`에 등록해야 콜백이 호출됨. 단순 함수 호출만으로는 비동기 콜백 미동작
+
+### 이슈/해결
+- settings.local.json `teammatemode` → `teammateMode` (camelCase) 오타 수정
+- Background agent 출력 파일이 빈 파일로 생성되는 현상 → resume로 결과 확인 가능
+
+---
+
 ## 2026-02-06
 ### 작업 내용 - Steam 2PC 버그 수정 (3차 - 전체 해결)
 
@@ -244,79 +316,7 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - **증상**: 플레이어 버튼 클릭 시 프로필이 안 열림
 - **원인**: `IsHovered()` 버튼 클릭 후 unreliable
 - **수정**: `PlayerButtonToIDMap` (TMap<UButton*, int32>) 추가, `IsHovered() || HasMouseCapture()` 체크
-- **파일**: `WaitingRoomHUDWidget.h/cpp`
-
-##### [해결] #1 WaitingRoom UI 미갱신
-- **증상**: 호스트 설정 변경 시 UI 텍스트가 업데이트 안 됨
-- **원인**: GameState 참조 타이밍 이슈
-- **수정**: `UpdateRoomInfo(const FRoomSettings* InSettings = nullptr)` 옵셔널 직접 전달
-- **파일**: `WaitingRoomHUDWidget.h/cpp`
-
-##### [해결] #4 유저 커스텀 맵 preview offset
-- **증상**: 유저 레이아웃에서 클라이언트 벽돌 preview 위치가 50,50만큼 어긋남
-- **원인**: CSV 내보내기 시 GridOrigin 계산했으나 로드 시 CenterOffset=ZeroVector
-- **수정**: CSV에 `#META:CenterOffset:x,y,z` 메타데이터 헤더 추가 및 파싱
-- **파일**: `WjWorldPlacementComponent.cpp`, `WjWorldWallDescriptionDataAsset.cpp`
-
-##### [해결] #8 TileActor collision 옆 칸 영향
-- **증상**: 4방향 벽돌로 갇힌 타일의 Bomb()이 옆 타일 캐릭터에게도 영향
-- **원인**: `SetBoxExtent(InSize)` → Half extent에 전체 크기 전달 (박스가 2배 커짐)
-- **수정**: `SetBoxExtent(InSize * 0.5f)` + 방향별 HitBox 위치도 `InSize * 0.5f`로 수정
-- **파일**: `WjWorldTileActor.cpp` (InitializeTile)
-```cpp
-const FVector HalfExtent = InSize * 0.5f;
-CenterHitBoxComponent->SetBoxExtent(HalfExtent);
-BoxLocation = FVector(HalfExtent.X, 0.0f, 0.0f);  // 방향별 HitBox 위치
-```
-
-### 학습/메모
-- **Server RPC**: UObject에서 호출 불가, AActor에서만 가능 → Character로 이동
-- **UBoxComponent::SetBoxExtent()**: Half extent를 받음 (전체 크기의 절반)
-- **위젯 버튼 클릭 판별**: `IsHovered()` 대신 `TMap<UButton*, ID>` 매핑 + `HasMouseCapture()` 사용
-- **CSV 메타데이터**: `#`으로 시작하는 주석 줄을 메타데이터 저장용으로 활용
-
-### 남은 TODO (테스트 레코드 기반)
-- #3 대각선 맵 movement가 wall closed하게 안 움직임
-- Lobby HUD 로컬 방 찾기 버튼 제거
-- 그래픽 설정 (상/중/하) 추가
-- 게임 시작 전 어빌리티 사용 금지 (GameState::GamePhase)
-
-### 다음 작업 - Steam 빌드 테스트
-**스팀 빌드로 아래 버그 수정 사항 검증 필요:**
-- [ ] [Critical] 클라이언트 벽돌 스폰 작동 확인
-- [ ] [Critical] #14 호스트 설정 값 반영 확인 (게임모드/맵 변경)
-- [ ] #2 호스트 설정 패널 - 클라이언트에서 읽기 전용으로 표시 확인
-- [ ] #11 3자 프로필 조회 작동 확인
-- [ ] #1 WaitingRoom UI 갱신 확인
-- [ ] #4 유저 커스텀 맵 preview offset 정렬 확인
-- [ ] #8 TileActor collision 옆 칸 영향 없음 확인
 
 ---
-
-## 2026-02-06 (이전 기록)
-### 작업 내용 - Steam 2PC 버그 수정 (2차)
-
-#### 버그 수정 (High → Medium 해결)
-
-##### [해결] #16 Sumo 코스메틱 전이 버그
-- **증상**: 호스트가 Sumo에서 죽고 리스폰되면 호스트 코스메틱이 다른 플레이어에게 적용됨
-- **원인**: `PossessedBy()`에서 `CosmeticSub->GetLoadout()`이 항상 서버의 로드아웃 반환
-- **수정**: 로드아웃이 이미 있으면 덮어쓰지 않음 + 로컬 컨트롤러만 초기 로드아웃 설정
-- **파일**: `WjWorldCharacterPlay.cpp` (lines 186-213)
-```cpp
-// 리스폰 시 PlayerState에 이미 로드아웃이 있으면 덮어쓰지 않음
-if (PS->GetCosmeticLoadout().Entries.IsEmpty())
-{
-    APlayerController* PC = Cast<APlayerController>(NewController);
-    if (PC && PC->IsLocalController())
-    {
-        PS->SetCosmeticLoadout(CosmeticSub->GetLoadout());
-    }
-}
-```
-
-##### [해결] #2 호스트 설정 패널 클라이언트 표시 버그
-
----
-*마지막 동기화: 2026-02-06*
+*마지막 동기화: 2026-02-07*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
