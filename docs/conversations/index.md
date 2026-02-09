@@ -6,6 +6,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-09 | WjWorld | [배치 에디터 BP 완료, 잔존 버그 기록, 스킬 개선](./2026-02-09-wjworld-placement-bp-bugfix-record.md) | #배치시스템 #버그기록 #LobbyHUD #Steam테스트 #스킬개선 |
 | 2026-02-07 | WjWorld | [Steam 4차 버그 수정 + 코드 검증 + Agent Teams](./2026-02-07-wjworld-steam-4th-bugfix-code-review.md) | #bugfix #code-review #agent-teams #GAS #steam #spectating #graphics |
 | 2026-02-06 | WjWorld | [Steam 2PC 버그 수정 3차 - 전체 해결](./2026-02-06-wjworld-steam-bugfix-session4.md) | #bugfix #multiplayer #collision #rpc #widget #metadata |
 | 2026-02-06 | WjWorld | [Steam 2PC 버그 수정 2차 (#2,#11,#16)](./2026-02-06-wjworld-steam-bugfix-session3.md) | #bugfix #multiplayer #cosmetic #stats #waitingroom |
