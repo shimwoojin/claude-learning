@@ -218,6 +218,34 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 
 # WjWorld 개발 로그
 
+## 2026-02-09
+### 작업 내용 - 배치 에디터 BP 세팅 완료 + Steam 2PC 잔존 버그 확인
+
+#### 배치 에디터 BP 세팅 완료
+- 에디터 맵 생성
+- BP_PlacementSaveDialogWidget, BP_PlacementLoadDialogWidget 생성
+- 컨텍스트별 카탈로그 DataAsset 설정
+
+#### LobbyHUDWidget 정리
+- DirectConnectButton / OnDirectConnectClicked 제거
+- FindRoomButton null 접근 버그 수정 (CreateRoomButton if 블록 안에서 null 체크 없이 접근)
+
+#### Steam 2PC 테스트 — 잔존 버그 확인
+- **#3 대각선 맵 movement** — 대각선 연결 맵에서 movement가 wall closed하게 움직이지 않음 (미해결)
+- **#4 클라이언트 벽돌 preview offset** — 유저 커스텀 맵에서 50,50 어긋남 (미해결)
+- **#11 3자 프로필 조회** — 타 플레이어 프로필 조회 실패 (미해결)
+- **#3(Sumo) Host 관전 Yaw 미적용** — Host가 클라이언트 관찰 시 Yaw 미적용 (미해결)
+- **#4(Sumo) 유저 맵 벽돌 스폰 위치** — 유저 AW 맵에서 클라이언트 벽돌 엉뚱한 위치 (미해결)
+
+#### TODO
+- Lobby HUD 설정 버튼에 그래픽 상/중/하 추가 (GPU 사용량 대비 간단한 설정 필요)
+
+#### 확인 필요
+- Room 목록 스케일링 (Steam 배포 시 다수 방 표시 및 부하)
+- Sumo FloorRing 레벨 디자인 변경 (원형 축소 → 개별 타일 랜덤 파괴) 시 리플리케이션 비용
+
+---
+
 ## 2026-02-07
 ### 작업 내용 - Steam 4차 버그 수정 + 코드 검증 + Agent Teams 테스트
 
@@ -288,35 +316,7 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - settings.local.json `teammatemode` → `teammateMode` (camelCase) 오타 수정
 - Background agent 출력 파일이 빈 파일로 생성되는 현상 → resume로 결과 확인 가능
 
----
-
-## 2026-02-06
-### 작업 내용 - Steam 2PC 버그 수정 (3차 - 전체 해결)
-
-#### 버그 수정 완료
-
-##### [해결] [Critical] 클라이언트 벽돌 스폰 안 됨
-- **증상**: 클라이언트에서 GA_SpawnBrick 사용 시 벽돌이 서버에 스폰되지 않음
-- **원인**: UObject(UGameplayAbility)에서 Server RPC 호출 불가 - AActor에서만 가능
-- **수정**: `AWjWorldCharacterPlay::ServerSpawnBrick_Implementation()` 추가, GA에서 Character RPC 호출
-- **파일**: `WjWorldCharacterPlay.h/cpp`, `GA_SpawnBrick.cpp`
-
-##### [해결] [Critical] #14 호스트 설정 패널 값 반영 안 됨
-- **증상**: 게임모드/맵 ComboBox 선택해도 게임 시작 시 반영 안 됨
-- **원인**: ComboBox 선택 후 "Apply Settings" 버튼을 눌러야만 저장됨 → 사용자가 누르지 않고 바로 게임 시작
-- **수정**: `OnStartGameClicked()`에서 `ApplyCurrentUISettings()` 자동 호출
-- **파일**: `WaitingRoomHUDWidget.cpp`
-
-##### [해결] #2 호스트 설정 패널 클라이언트 표시
-- **증상**: 패널이 호스트만 보이도록 숨겨짐 (클라이언트 설정 확인 불가)
-- **수정**: 패널은 전체 표시, 클라이언트는 ComboBox disabled + Apply 버튼 숨김
-- **파일**: `WaitingRoomHUDWidget.cpp` (UpdateHostSettingsPanelVisibility)
-
-##### [해결] #11 3자 프로필 조회 안 됨
-- **증상**: 플레이어 버튼 클릭 시 프로필이 안 열림
-- **원인**: `IsHovered()` 버튼 클릭 후 unreliable
-- **수정**: `PlayerButtonToIDMap` (TMap<UButton*, int32>) 추가, `IsHovered() || HasMouseCapture()` 체크
 
 ---
-*마지막 동기화: 2026-02-07*
+*마지막 동기화: 2026-02-09*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
