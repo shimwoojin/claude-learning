@@ -79,6 +79,20 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트를 지원하는 확장된 �
 - **엣지 케이스**: 솔로 자동 승리, 동시 탈락, 전원 이탈
 - **상태**: C++ 코드 완료, 에디터 세팅 필요 (BP 프로퍼티, 링 배치, HUD 위젯, 파워업 BP)
 
+### JumpMap 미니게임
+세 번째 미니게임. 장애물 코스를 통과하여 결승점에 도달하는 타임어택 레이스.
+- **WjWorldGameRuleJumpMap**: 시간 제한(120초), Z 낙하 감지, 체크포인트 리스폰, 완주 순서 추적
+- **체크포인트 시스템**: CheckpointOrder 기반 진행 관리, 역주행 방지, 사망 시 마지막 체크포인트에서 리스폰
+- **장애물 액터**: KillZone (즉사), MovingPlatform (왕복 이동), RotatingObstacle (회전+킬/넉백), PushWind (방향성 바람)
+- **맵 구조 액터**: Checkpoint, End (도착 트리거), GrapplePoint (그래플 대상)
+- **어빌리티**: GA_Dash (Ability8/Shift), GA_Grapple (Ability9/E), GA_DoubleJump (Ability10)
+- **JumpMapGameDataComponent**: ElapsedTime, TimeLimit, PlayerFinishOrder (모두 Replicated)
+- **JumpMapPlayerDataComponent**: CurrentCheckpointIndex, DeathCount, bHasFinished, FinishTime (모두 Replicated)
+- **JumpMapLayoutDataAsset**: 내장+유저 CSV 레이아웃 로드, `#META:MapName:` 헤더 지원
+- **승리 조건**: 전원 완주 or 시간 초과, 최단 시간 플레이어 우승
+- **엣지 케이스**: 솔로 자동, 전원 이탈, 플레이어 없음
+- **상태**: C++ 코드 완료 + 에디터 세팅 완료 (MinigameCatalog, InputMapping, CharacterPlaySetup, HUDPlay)
+
 ### Gameplay Ability System
 GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아 각 어빌리티 구현.
 - **AbilityBase 공통 기능**: AbilityName, AbilityIcon (UI 메타), GetPromptDescription(), 충전 시스템 인터페이스 (IsChargeBased, GetCurrentCharges, GetMaxCharges, GetChargeRefillTimeRemaining)
@@ -88,6 +102,9 @@ GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아
 - **GA_LiftBrick**: 벽돌 재배치 어빌리티, Moving/Destructible 벽돌 들어올리기, Cancel 시 원래 위치 복원, 들고 있는 벽돌 색상 리플리케이션
 - **GA_Push**: Sumo 넉백 어빌리티, 전방 구형 오버랩 → LaunchCharacter(), PushForce=1200, CooldownDuration=1.5s, SetLastAttacker(), SuperPushMultiplier(2x), PushHitCameraShake
 - **GA_Jump**: Sumo 점프 어빌리티, UE CharacterJump 패턴 기반, LocalPredicted, CommitAbility(), Character->Jump()/StopJumping(), 가변 높이 점프, InputReleased로 종료
+- **GA_Dash**: JumpMap 대시 어빌리티, LaunchCharacter 전방 발사, DashDistance=600, DashDuration=0.2s, CooldownDuration=2s, 타이머 기반 EndAbility
+- **GA_Grapple**: JumpMap 그래플 어빌리티, 카메라 라인트레이스→JumpMapGrapplePointActor 감지, 히트 시 LaunchCharacter 당김 + 도착 체크, 미스 시 쿨다운 없이 종료 (CommitAbility 미호출)
+- **GA_DoubleJump**: GA_Jump 확장, 공중에서 1회 추가 점프, CanActivateAbility에서 GA_Jump의 CanJump() 우회 → UWjWorldGameplayAbilityBase 직접 호출, CurrentJumpCount 기반 허용
 - **AttributeSet**: HP, MaxSpawnBrickCharges, SpawnBrickCharges, OnRep 콜백
 - **Effects**: GE_AbilityCooldown (쿨다운), GE_SpawnBrickChargeCost (충전 비용), GE_SumoSpeedBoost/SuperPush/Shield (참조용 GE, 실제 버프는 AddLooseGameplayTag)
 
@@ -105,6 +122,11 @@ GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아
 - `GameplayCue_Sumo_PowerUp_Pickup` - 파워업 획득 이펙트
 - `Ability_Jump` - GA_Jump 어빌리티 태그
 - `Cooldown_Jump` - GA_Jump 쿨다운 태그
+- `Ability_Dash` - GA_Dash 어빌리티 태그
+- `Ability_Grapple` - GA_Grapple 어빌리티 태그
+- `Ability_DoubleJump` - GA_DoubleJump 어빌리티 태그
+- `Cooldown_Dash` - GA_Dash 쿨다운 태그
+- `Cooldown_Grapple` - GA_Grapple 쿨다운 태그
 
 ### 코스메틱 시스템
 Steam 무료 출시 후 유료 코스메틱 판매를 위한 시스템. ItemId(FName) 기반 플랫폼 독립 식별.
@@ -144,7 +166,7 @@ CosmeticComponent.ApplyLoadout() (비동기 메시 로드)
 Steam User Stats 래핑 + GConfig 폴백 (비Steam 빌드용). `UWjWorldStatsSubsystem` (GameInstanceSubsystem).
 - **로컬 스탯**: ReadLocalStat, IncrementLocalStat, StoreStats (GConfig 또는 Steam API)
 - **원격 스탯**: RequestUserStats() + OnUserStatsReceived 비동기 델리게이트
-- **미니게임 스탯**: 네임스페이스 기반 (`WjWorldStats::ApproachingWall`, `WjWorldStats::Sumo`)
+- **미니게임 스탯**: 네임스페이스 기반 (`WjWorldStats::ApproachingWall`, `WjWorldStats::Sumo`, `WjWorldStats::JumpMap`)
 - **FMinigameStatEntry**: 개별 스탯 항목
 - **FMinigameStatDescriptor**: UI 표시용 스탯 설명자
 - **자동 기록**: GameStatePlay에서 게임 종료 시 `StatNamespace` 기반 동적 스탯 키로 승/패/킬 자동 증가
@@ -207,6 +229,7 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - **GameMode 클래스**: WaitingRoomGameModeClass, PlayGameModeClass, AWEditorGameModeClass, JumpMapEditorGameModeClass
 - **캐릭터 기본값**: DefaultCharacterMesh, DefaultAnimBlueprintClass, DefaultInputMappingContext
 - **Approaching Wall**: BrickMesh, TileMesh, WallDescriptionAsset
+- **JumpMap**: JumpMapLayoutDataAsset
 - **배치 카탈로그**: LobbyPlaceableCatalog, ApproachingWallPlaceableCatalog, JumpMapPlaceableCatalog
 - **기타 카탈로그**: MinigameCatalog, CosmeticCatalog
 - **헬퍼 함수**: GetLobbyMapPath(), GetWaitingRoomOpenLevelURL(), GetPlayServerTravelURL(), GetPlaceableCatalogForContext(), GetEditorMapOpenLevelURL(), HasEditorMapForContext()
@@ -217,6 +240,41 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 ## 최근 개발 로그
 
 # WjWorld 개발 로그
+
+## 2026-02-10
+### 작업 내용 - JumpMap 미니게임 전체 구현
+
+#### JumpMap C++ 코드 구현 (Agent Teams 4병렬)
+- GameRule: `WjWorldGameRuleJumpMap` — 시간 제한, 체크포인트 리스폰, 완주 추적, Z 낙하 감지
+- GameData: `JumpMapGameDataComponent` (ElapsedTime, PlayerFinishOrder), `JumpMapPlayerDataComponent` (Checkpoint, DeathCount)
+- 장애물 액터 7종: KillZone, MovingPlatform, RotatingObstacle, PushWind, Checkpoint, End, GrapplePoint
+- 레이아웃: `JumpMapLayoutDataAsset` — 내장+유저 CSV 파싱 (`#META:MapName:` 지원)
+- 어빌리티 3종: GA_Dash (전방 대시), GA_Grapple (라인트레이스→당김), GA_DoubleJump (공중 점프)
+- HUD: `JumpMapHUDWidget` — 타이머, 체크포인트, 사망 횟수, 순위표
+- 통합: WjTypes(Ability8/9/10), GameplayTags(5개), Stats(JumpMap 네임스페이스), DeveloperSettings, PlacementTypes
+
+#### 코드 리뷰 중 버그 수정 (4건)
+- KillZoneActor: `Character->OnEliminated()` → `GameRule->OnPlayerDied()` (영구 제거→체크포인트 리스폰)
+- EndActor: GameRule 호출 누락 → `GameRule->OnPlayerFinished()` 추가
+- RotatingObstacleActor: 킬 모드에서 동일 수정
+- CheckpointActor: PlayerData 갱신 누락 → `SetCurrentCheckpointIndex()` + 역주행 방지 로직
+
+#### 에디터 세팅 완료
+- DA_MinigameCatalog에 JumpMap 등록
+- DA_CharacterPlaySetup에 Dash/Grapple/DoubleJump 바인딩
+- IMC_Default에 Shift(Dash)/E(Grapple) 입력 매핑
+- BP_HUDPlay에 JumpMapHUDWidget 매핑
+
+#### 태그/InputID 정리
+- DefaultGameplayTags.ini에 5개 태그 등록 (Ability.Dash/Grapple/DoubleJump, Cooldown.Dash/Grapple)
+- WjTypes.h에 Ability10(DoubleJump) 추가
+- GA_Dash/Grapple/DoubleJump → `WjWorldGameplayTag::` 헬퍼 사용으로 통일
+
+### 학습/메모
+- Agent Teams 병렬 구현은 빠르지만, 기존 패턴(GameRule->OnPlayerDied vs Character->OnEliminated) 착오가 다수 발생 → 반드시 코드 리뷰 필요
+- GA_DoubleJump의 CanActivateAbility: 부모(GA_Jump)의 CanJump() 우회를 위해 조부모(UWjWorldGameplayAbilityBase) 직접 호출 패턴 사용
+
+---
 
 ## 2026-02-09
 ### 작업 내용 - 배치 에디터 BP 세팅 완료 + Steam 2PC 잔존 버그 확인
@@ -282,41 +340,6 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - **수정**: `#META:CenterOffset:` 주석 라인 파싱 로직 추가
 - **파일**: `WjWorldWallDescriptionDataAsset.cpp`
 
-##### [해결] 제거 시 관전 전환 없음
-- **증상**: 제거 후 화면 멈춤 (관전 시스템 미구현)
-- **수정**: `HandleEliminationEffects()`에서 살아있는 플레이어로 `SetViewTargetWithBlend()` 전환
-- **파일**: `WjWorldCharacterPlay.cpp`
-
-##### [해결] Lobby HUD 정리
-- **수정**: FindRoomButton 숨김 처리 (BindWidgetOptional), 그래픽 품질 사이클 설정 구현
-- **파일**: `LobbyHUDWidget.h/cpp`
-
-#### GAS 버그 수정 (커밋 0d323ff)
-
-##### [해결] GA_Jump Super::ActivateAbility() 누락
-- **증상**: LocalPredicted 정책에서 Prediction Key 생성 실패 가능
-- **수정**: `Super::ActivateAbility()` 호출 추가
-- **파일**: `GA_Jump.cpp`
-
-#### 코드 검증 (4개 병렬 subagent)
-- **네트워크 리플리케이션**: 문제 없음 (20+ 파일 검증)
-- **GAS 어빌리티**: GA_Jump Super 누락 발견 → 즉시 수정
-- **GameRule 라이프사이클**: 문제 없음 (프로덕션 레벨)
-- **null 포인터/메모리 안전성**: BrickComponent GetGameModePlay() null 체크 권장 (실제 크래시 확률 낮음)
-
-### 학습/메모
-- **Claude Code Agent Teams**: Opus 4.6에서 실험적 기능으로 추가. `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` + `teammateMode` 설정 필요
-  - `"tmux"`: split-pane 모드 (Windows 미지원)
-  - `"in-process"`: 메인 터미널에서 실행 (Windows 권장)
-  - Subagent vs Teams: 독립 작업은 subagent가 효율적, 상호 소통 필요한 대규모 작업은 teams
-  - 자동 팀 구성은 불가 - 명시적 요청 필요
-- **Steam CCallResult 패턴**: `SteamAPICall_t` 반환값을 `CCallResult<>.Set()`에 등록해야 콜백이 호출됨. 단순 함수 호출만으로는 비동기 콜백 미동작
-
-### 이슈/해결
-- settings.local.json `teammatemode` → `teammateMode` (camelCase) 오타 수정
-- Background agent 출력 파일이 빈 파일로 생성되는 현상 → resume로 결과 확인 가능
-
-
 ---
-*마지막 동기화: 2026-02-09*
+*마지막 동기화: 2026-02-10*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
