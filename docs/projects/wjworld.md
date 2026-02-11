@@ -27,7 +27,7 @@
 - `GameStatePlay`에 게임 전체 데이터 (예: 웨이브 타이밍)
 - `PlayerStatePlay`에 플레이어별 데이터 (예: 점수, 상태)
 - 리플리케이션 지원
-- **ApproachingWallGameDataComponent**: `CurrentWallName` 리플리케이트 (클라이언트 WallDesc 로드용)
+- **ApproachingWallGameDataComponent**: `CurrentWallName`, `WallBrickSize`, `WallCenterOffset`, `WallColumnNum`, `WallRowNum` 리플리케이트 (클라이언트 WallDesc 로드용 + CSV 미보유 대응)
 
 ### 미니게임 카탈로그 시스템
 `UWjWorldMinigameDataAsset` 기반 미니게임 정의 및 동적 조회.
@@ -42,7 +42,7 @@
 Lobby / ApproachingWall / JumpMap 3개 컨텍스트를 지원하는 확장된 배치 시스템.
 - **EPlacementContext**: `None`, `Lobby`, `ApproachingWall`, `JumpMap` 열거형
 - **IWjWorldPlacementDataProvider**: GameState 추상화 인터페이스 (AddPlacedObject, RemovePlacedObjectAt, GetPlacedObjects)
-- **PlacementComponent**: 컨텍스트 지원, `SaveLayoutToSlot()`/`LoadLayoutFromSlot()`, `GetSavedLayoutSlots()`, `LoadedSlotName` 추적
+- **PlacementComponent**: 컨텍스트 지원, `SaveLayoutToSlot()`/`LoadLayoutFromSlot()`/`DeleteLayoutSlot()`, `GetSavedLayoutSlots()`, `LoadedSlotName` 추적
 - **PlacementPreviewActor**: 배치 프리뷰 (유효/무효 색상), `FStreamableManager` 비동기 메시 로드
 - **PlacedObjectActor**: 실제 배치된 오브젝트, 삭제 모드 하이라이트
 - **PlaceableObjectDataAsset**: 컨텍스트별 배치 가능 오브젝트 카탈로그 (`FPlaceableObjectDefinition`)
@@ -99,7 +99,7 @@ GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아
 - **AbilityBase 어빌리티 제한**: `CanActivateAbility()` 오버라이드 - GameState의 `AllowedAbilityTags` 체크 (빈 = 전부 허용)
 - **GA_NormalAttack**: 4방향 스냅(Yaw 기반) 벽돌 공격, BrickType별 처리 (Standard 파괴 불가, Explosive/Moving/Destructible)
 - **GA_SpawnBrick**: 충전 기반 벽돌 배치, Preview → Confirm/Cancel 패턴, GE 기반 충전 리필, 어트리뷰트 변경 위임
-- **GA_LiftBrick**: 벽돌 재배치 어빌리티, Moving/Destructible 벽돌 들어올리기, Cancel 시 원래 위치 복원, 들고 있는 벽돌 색상 리플리케이션
+- **GA_LiftBrick**: 벽돌 재배치 어빌리티, Moving/Destructible 벽돌 들어올리기, Cancel 시 원래 위치 복원, 들고 있는 벽돌 색상 리플리케이션, ServerLiftBrickAtGridIndex RPC (클라이언트 그리드 좌표 전송)
 - **GA_Push**: Sumo 넉백 어빌리티, 전방 구형 오버랩 → LaunchCharacter(), PushForce=1200, CooldownDuration=1.5s, SetLastAttacker(), SuperPushMultiplier(2x), PushHitCameraShake
 - **GA_Jump**: Sumo 점프 어빌리티, UE CharacterJump 패턴 기반, LocalPredicted, CommitAbility(), Character->Jump()/StopJumping(), 가변 높이 점프, InputReleased로 종료
 - **GA_Dash**: JumpMap 대시 어빌리티, LaunchCharacter 전방 발사, DashDistance=600, DashDuration=0.2s, CooldownDuration=2s, 타이머 기반 EndAbility
@@ -241,6 +241,42 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 
 # WjWorld 개발 로그
 
+## 2026-02-11
+### 작업 내용 - 레이아웃 삭제 기능 + AW 버그 3건 수정
+
+#### 레이아웃 삭제 기능 구현
+- `WjWorldPlacementComponent::DeleteLayoutSlot()` 추가 — SaveGame + 컨텍스트별 CSV 파일 삭제
+- `PlacementLoadDialogWidget` X 삭제 버튼 추가 — HorizontalBox 레이아웃 [슬롯이름(Fill) | X(Auto)]
+- `PlacementHUDWidgetBase::OnSlotDeleteRequested()` 핸들러 — 삭제 후 다이얼로그 내 슬롯 목록 인플레이스 갱신
+- `PlacementSaveDialogWidget` 슬롯 유효성 표시 개선
+
+#### Bug 1: BrickMovement 대각선 이동 3-4칸 → 1칸 수정
+- **원인**: `GetMovementVector()`에서 `GetNextDirections()`가 반환한 모든 방향을 for 루프로 전부 적용
+- **수정**: 하나의 방향만 선택, 이전 이동 방향과 일치하는 방향 우선 (관성 유지)
+
+#### Bug 2: 클라이언트 프리뷰 offset 50,50 수정
+- **원인**: 클라이언트에서 유저 CSV 파일 부재 → 잘못된 WallDesc(CenterOffset)로 폴백
+- **수정**: `ApproachingWallGameDataComponent`에 `WallBrickSize/WallCenterOffset/WallColumnNum/WallRowNum` 리플리케이트 추가
+- `OnWallSpawnFinished()`에서 설정, GA_SpawnBrick/GA_LiftBrick에서 리플리케이트된 값으로 보정
+
+#### Bug 3: 클라이언트 GA_LiftBrick 1프레임 취소 수정
+- **원인**: 서버가 독립적으로 `CalculatePickupLocation()` 실행 시 네트워크 지연으로 다른 위치 계산 → 벽돌 미발견 → `EndAbility(replicate)` 취소
+- **수정**: `ServerLiftBrickAtGridIndex` Server RPC 패턴 적용 (GA_SpawnBrick의 `ServerSpawnBrickAtGridIndex`와 동일)
+  - 클라이언트: 그리드 인덱스 계산 → RPC 전송
+  - 서버: 클라이언트 지정 인덱스로 벽돌 탐색/파괴 (`ServerHandleBrickPickup`)
+  - `HasAuthority()` 블록 제거 → RPC 핸들러로 이전
+
+### 학습/메모
+- `LocalPredicted` 어빌리티에서 서버가 avatar 위치/회전을 기반으로 독립 판단하면 네트워크 지연으로 클라이언트와 불일치 발생 → 클라이언트가 계산한 결과를 Server RPC로 전달하는 패턴이 안정적
+- `FIntPoint`에는 `IsZero()` 메서드가 없음 → `(X != 0 || Y != 0)` 으로 체크
+- `BrickMovement::GetNextDirections()`는 FloodFill 경계점의 8방향 인접 셀을 모두 반환 — 이동 시 반드시 하나만 선택해야 함
+
+### 이슈/해결
+- 잔존 버그: #3(Sumo) Host 관전 Yaw, #4(Sumo) 유저 맵 클라이언트 벽돌 스폰 위치 — 미해결
+- JumpMap 맵 레벨 생성 + 패키징 맵 목록 추가 필요
+
+---
+
 ## 2026-02-10
 ### 작업 내용 - JumpMap 미니게임 전체 구현
 
@@ -304,42 +340,6 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 
 ---
 
-## 2026-02-07
-### 작업 내용 - Steam 4차 버그 수정 + 코드 검증 + Agent Teams 테스트
-
-#### 버그 수정 (커밋 263031b)
-
-##### [해결] GamePhase 어빌리티 제한
-- **증상**: 게임 시작 전/종료 후에도 어빌리티 사용 가능
-- **수정**: `CanActivateAbility()`에서 `GamePhase != Playing` 체크 추가
-- **파일**: `WjWorldGameplayAbilityBase.cpp`
-
-##### [해결] 유저 맵 클라이언트 벽돌 스폰 위치 오류
-- **증상**: 유저 커스텀 맵에서 클라이언트 벽돌이 엉뚱한 위치에 스폰
-- **수정**: `GetWallDescriptionByName` → `GetWallDescriptionByNameIncludingUser`로 변경
-- **파일**: `GA_SpawnBrick.cpp`, `GA_LiftBrick.cpp`
-
-##### [해결] BrickComponent collision 분리
-- **증상**: TileActor overlap 감지 실패 (나이아가라 근거없이 출력)
-- **수정**: BrickMeshComponent를 QueryOnly+Overlap으로, BlockingCollisionComponent(95%)는 BlockAll로 분리
-- **파일**: `WjWorldBrickComponent.cpp`
-
-##### [해결] WaitingRoom 호스트 설정 UI
-- **증상**: 호스트 설정 패널이 클라이언트에도 표시 + Apply 후 Display 미갱신
-- **수정**: 패널 호스트 전용 표시 + Apply 후 `UpdateRoomInfo()` 명시적 호출
-- **파일**: `WaitingRoomHUDWidget.cpp`
-
-##### [해결] 3자 프로필 스탯 조회 실패
-- **증상**: 타 플레이어 프로필 스탯이 "Loading..." 상태로 멈춤
-- **원인**: `RequestUserStats()` 반환값 무시, CCallResult 미등록
-- **수정**: `CCallResult<UWjWorldStatsSubsystem, UserStatsReceived_t>` 패턴 적용
-- **파일**: `WjWorldStatsSubsystem.h/cpp`
-
-##### [해결] ParseWallLayout 메타데이터 파싱 누락
-- **증상**: 유저 커스텀 맵 preview offset 어긋남
-- **수정**: `#META:CenterOffset:` 주석 라인 파싱 로직 추가
-- **파일**: `WjWorldWallDescriptionDataAsset.cpp`
-
 ---
-*마지막 동기화: 2026-02-10*
+*마지막 동기화: 2026-02-11*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
