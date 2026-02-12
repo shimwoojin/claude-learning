@@ -6,6 +6,7 @@ Claude Code와의 모든 대화 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-12 | WjWorld | [Lobby 배치 모드 카메라 Pawn + 카메라 회전 버그 수정](./2026-02-12-wjworld-placement-camera-pawn.md) | #UE5 #PlayerController #Pawn #PlacementSystem #Camera #Input #GamePlayCamera #bugfix |
 | 2026-02-10 | WjWorld | [JumpMap 미니게임 전체 구현](./2026-02-10-wjworld-jumpmap-minigame-impl.md) | #Minigame #JumpMap #GameRule #GAS #Ability #TeamAgent #Layout #HUD #Replication |
 | 2026-02-09 | WjWorld | [배치 에디터 BP 완료, 잔존 버그 기록, 스킬 개선](./2026-02-09-wjworld-placement-bp-bugfix-record.md) | #배치시스템 #버그기록 #LobbyHUD #Steam테스트 #스킬개선 |
 | 2026-02-07 | WjWorld | [Steam 4차 버그 수정 + 코드 검증 + Agent Teams](./2026-02-07-wjworld-steam-4th-bugfix-code-review.md) | #bugfix #code-review #agent-teams #GAS #steam #spectating #graphics |
