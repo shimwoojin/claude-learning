@@ -88,7 +88,9 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트를 지원하는 확장된 �
 - **어빌리티**: GA_Dash (Ability8/Shift), GA_Grapple (Ability9/E), GA_DoubleJump (Ability10)
 - **JumpMapGameDataComponent**: ElapsedTime, TimeLimit, PlayerFinishOrder (모두 Replicated)
 - **JumpMapPlayerDataComponent**: CurrentCheckpointIndex, DeathCount, bHasFinished, FinishTime (모두 Replicated)
-- **JumpMapLayoutDataAsset**: 내장+유저 CSV 레이아웃 로드, `#META:MapName:` 헤더 지원
+- **JumpMapLayoutDataAsset**: 내장+유저 CSV 레이아웃 로드, `#META:MapName:` 헤더 지원, CustomProperties 11번째 컬럼, ExportLayoutToCSV()
+- **액터 직렬화**: JumpMapActorBase에 JumpMapObjectId + Get/ApplySerializableProperties 가상 함수, 7개 서브클래스별 프로퍼티 직렬화
+- **에디터 도구**: WjWorldEditor 모듈의 JumpMapLevelEditorSubsystem + SJumpMapLayoutPanel (레벨 액터 일괄 저장/불러오기)
 - **승리 조건**: 전원 완주 or 시간 초과, 최단 시간 플레이어 우승
 - **엣지 케이스**: 솔로 자동, 전원 이탈, 플레이어 없음
 - **상태**: C++ 코드 완료 + 에디터 세팅 완료 (MinigameCatalog, InputMapping, CharacterPlaySetup, HUDPlay)
@@ -231,6 +233,7 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - **Approaching Wall**: BrickMesh, TileMesh, WallDescriptionAsset
 - **JumpMap**: JumpMapLayoutDataAsset
 - **배치 카탈로그**: LobbyPlaceableCatalog, ApproachingWallPlaceableCatalog, JumpMapPlaceableCatalog
+- **배치 카메라**: PlacementCameraMoveAction, PlacementCameraLookAction, PlacementCameraRightMouseAction, PlacementCameraVerticalMoveAction
 - **기타 카탈로그**: MinigameCatalog, CosmeticCatalog
 - **헬퍼 함수**: GetLobbyMapPath(), GetWaitingRoomOpenLevelURL(), GetPlayServerTravelURL(), GetPlaceableCatalogForContext(), GetEditorMapOpenLevelURL(), HasEditorMapForContext()
 
@@ -240,6 +243,50 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 ## 최근 개발 로그
 
 # WjWorld 개발 로그
+
+## 2026-02-12
+### 작업 내용 - Lobby 배치 모드 카메라 Pawn 전환 + JumpMap 에디터 에셋/Intro 영상
+
+#### JumpMap 에디터 에셋 + 에셋 팩 + Intro 영상 (커밋 7682d45)
+- JumpMap 에디터 에셋 세팅 완료
+- Platformer_8_Underworld 에셋 팩 추가
+- Intro 영상 추가
+
+#### Lobby 배치 모드 자유 비행 카메라 Pawn 구현
+- **`AWjWorldPlacementCameraPawn`** 신규 생성 — APawn + UCameraComponent + UFloatingPawnMovement
+  - WASD 수평 이동 (컨트롤러 Yaw 기준), Q/E 수직 이동
+  - RMB 홀드 + 마우스 회전 (커서 유지), `bReplicates = false` 로컬 전용
+  - MaxSpeed=1200, Accel=4000, Decel=8000 (부드러운 비행 조작감)
+  - DeveloperSettings에서 InputAction 소프트 로드
+
+- **`AWjWorldPlayerControllerLobby`** — 카메라 전환/복귀 함수 추가
+  - `SwitchToPlacementCamera()`: 현재 카메라 위치에서 PlacementCameraPawn 스폰 + Possess
+  - `RestoreOriginalPawn()`: 원래 캐릭터로 Possess 복귀 + 카메라 Pawn 파괴
+  - `OriginalPawn` (TWeakObjectPtr), `PlacementCameraPawn` (TObjectPtr) 멤버 추가
+
+- **`AWjWorldGameModeLobby`** — 배치 모드 Enter/Exit 흐름 리팩토링
+  - `EnterPlacementMode()`: 카메라 전환 → 배치 모드 시작 → OnPlacementModeChanged 구독 → HUD 전환
+  - `ExitPlacementMode()`: PlacementComp 종료만 호출 (나머지는 델리게이트에서 통합 처리)
+  - `HandlePlacementModeChanged()` 신규: ESC/HUD Exit 모든 종료 경로 통합 (카메라 복귀 + HUD 복원 + 델리게이트 해제)
+
+- **`UWjWorldDeveloperSettings`** — Placement|Camera Input 카테고리 4개 소프트 참조 추가
+  - `PlacementCameraMoveAction`, `PlacementCameraLookAction`, `PlacementCameraRightMouseAction`, `PlacementCameraVerticalMoveAction`
+
+#### 빌드 검증
+- `APlayerController::SpawnLocation` 이름 충돌 수정 (→ `CameraSpawnLoc`)
+- 빌드 성공 확인
+
+### 학습/메모
+- `APlayerController`에 `SpawnLocation` 멤버가 이미 존재하여 지역 변수 이름 충돌 발생 — UE의 PC 클래스는 멤버가 많으므로 항상 네이밍 주의
+- Possession 전환 시 PlacementComponent(PC의 DefaultSubobject)는 생존하지만, InputComponent는 새 Pawn 것으로 교체됨 → 반드시 Possess 후 BindInputActions 호출 필요
+- OnPlacementModeChanged 델리게이트로 ESC/HUD Exit 등 모든 종료 경로를 통합하면 코드 중복 없이 안전한 cleanup 보장
+
+### 에디터 세팅 TODO
+- InputAction 4개 생성: `IA_PlacementCameraMove`, `IA_PlacementCameraLook`, `IA_PlacementCameraRightMouse`, `IA_PlacementCameraVerticalMove`
+- `IMC_Placement`에 매핑 추가
+- DeveloperSettings > Placement|Camera Input에서 할당
+
+---
 
 ## 2026-02-11
 ### 작업 내용 - 레이아웃 삭제 기능 + AW 버그 3건 수정
@@ -295,50 +342,6 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - RotatingObstacleActor: 킬 모드에서 동일 수정
 - CheckpointActor: PlayerData 갱신 누락 → `SetCurrentCheckpointIndex()` + 역주행 방지 로직
 
-#### 에디터 세팅 완료
-- DA_MinigameCatalog에 JumpMap 등록
-- DA_CharacterPlaySetup에 Dash/Grapple/DoubleJump 바인딩
-- IMC_Default에 Shift(Dash)/E(Grapple) 입력 매핑
-- BP_HUDPlay에 JumpMapHUDWidget 매핑
-
-#### 태그/InputID 정리
-- DefaultGameplayTags.ini에 5개 태그 등록 (Ability.Dash/Grapple/DoubleJump, Cooldown.Dash/Grapple)
-- WjTypes.h에 Ability10(DoubleJump) 추가
-- GA_Dash/Grapple/DoubleJump → `WjWorldGameplayTag::` 헬퍼 사용으로 통일
-
-### 학습/메모
-- Agent Teams 병렬 구현은 빠르지만, 기존 패턴(GameRule->OnPlayerDied vs Character->OnEliminated) 착오가 다수 발생 → 반드시 코드 리뷰 필요
-- GA_DoubleJump의 CanActivateAbility: 부모(GA_Jump)의 CanJump() 우회를 위해 조부모(UWjWorldGameplayAbilityBase) 직접 호출 패턴 사용
-
----
-
-## 2026-02-09
-### 작업 내용 - 배치 에디터 BP 세팅 완료 + Steam 2PC 잔존 버그 확인
-
-#### 배치 에디터 BP 세팅 완료
-- 에디터 맵 생성
-- BP_PlacementSaveDialogWidget, BP_PlacementLoadDialogWidget 생성
-- 컨텍스트별 카탈로그 DataAsset 설정
-
-#### LobbyHUDWidget 정리
-- DirectConnectButton / OnDirectConnectClicked 제거
-- FindRoomButton null 접근 버그 수정 (CreateRoomButton if 블록 안에서 null 체크 없이 접근)
-
-#### Steam 2PC 테스트 — 잔존 버그 확인
-- **#3 대각선 맵 movement** — 대각선 연결 맵에서 movement가 wall closed하게 움직이지 않음 (미해결)
-- **#4 클라이언트 벽돌 preview offset** — 유저 커스텀 맵에서 50,50 어긋남 (미해결)
-- **#11 3자 프로필 조회** — 타 플레이어 프로필 조회 실패 (미해결)
-- **#3(Sumo) Host 관전 Yaw 미적용** — Host가 클라이언트 관찰 시 Yaw 미적용 (미해결)
-- **#4(Sumo) 유저 맵 벽돌 스폰 위치** — 유저 AW 맵에서 클라이언트 벽돌 엉뚱한 위치 (미해결)
-
-#### TODO
-- Lobby HUD 설정 버튼에 그래픽 상/중/하 추가 (GPU 사용량 대비 간단한 설정 필요)
-
-#### 확인 필요
-- Room 목록 스케일링 (Steam 배포 시 다수 방 표시 및 부하)
-- Sumo FloorRing 레벨 디자인 변경 (원형 축소 → 개별 타일 랜덤 파괴) 시 리플리케이션 비용
-
----
 
 ---
 *마지막 동기화: 2026-02-12*
