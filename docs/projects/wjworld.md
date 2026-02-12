@@ -341,5 +341,5 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 ---
 
 ---
-*마지막 동기화: 2026-02-11*
+*마지막 동기화: 2026-02-12*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
