@@ -42,17 +42,19 @@
 Lobby / ApproachingWall / JumpMap 3개 컨텍스트를 지원하는 확장된 배치 시스템.
 - **EPlacementContext**: `None`, `Lobby`, `ApproachingWall`, `JumpMap` 열거형
 - **IWjWorldPlacementDataProvider**: GameState 추상화 인터페이스 (AddPlacedObject, RemovePlacedObjectAt, GetPlacedObjects)
-- **PlacementComponent**: 컨텍스트 지원, `SaveLayoutToSlot()`/`LoadLayoutFromSlot()`/`DeleteLayoutSlot()`, `GetSavedLayoutSlots()`, `LoadedSlotName` 추적
-- **PlacementPreviewActor**: 배치 프리뷰 (유효/무효 색상), `FStreamableManager` 비동기 메시 로드
-- **PlacedObjectActor**: 실제 배치된 오브젝트, 삭제 모드 하이라이트
+- **PlacementComponent**: 컨텍스트 지원, `SaveLayoutToSlot()`/`LoadLayoutFromSlot()`/`DeleteLayoutSlot()`, `GetSavedLayoutSlots()`, `LoadedSlotName` 추적, `ValidateJumpMapLayout()` 검증
+- **PlacementPreviewActor**: 배치 프리뷰 (유효/무효 색상), `FStreamableManager` 비동기 메시 로드, 회전 축(Yaw/Pitch/Roll) 전환
+- **PlacedObjectActor**: 실제 배치된 오브젝트, 삭제 모드 하이라이트, ObjectId 저장
 - **PlaceableObjectDataAsset**: 컨텍스트별 배치 가능 오브젝트 카탈로그 (`FPlaceableObjectDefinition`)
-- **LayoutSaveGame**: `USaveGame` 기반 레이아웃 저장/로드 (컨텍스트별 SaveSlot: `LobbyLayout`, `ApproachingWallLayout`, `JumpMapLayout`)
+- **LayoutSaveGame**: `USaveGame` 기반 레이아웃 저장/로드 (컨텍스트별 SaveSlot), `FPlacedObjectSaveEntry.CustomProperties` (JumpMap CheckpointOrder 등)
 - **GameStateLobby**: 배치 오브젝트 리플리케이션 (`TArray<FPlacedObjectSaveEntry>`)
-- **입력**: LMB(배치), R(회전), DEL(삭제), ESC(종료)
+- **입력**: LMB(배치), R(회전), T(축 전환), G(각도 전환), DEL(삭제), F(공중모드), ESC(종료)
 - **에디터 모드**: AWEditor, JumpMapEditor 전용 GameMode/GameState/HUD
 - **WallLayoutConverter**: AW 컨텍스트용 배치 오브젝트 → WallLayout CSV 변환, 외부/내부 영역 구분 유효성 검사
-- **CSV 내보내기**: `ExportLayoutAsCSV()` - SaveGame 저장 시 CSV 파일도 자동 내보내기 (`Content/WallLayouts/User/`)
-- **유저 레이아웃 자동 스캔**: `WallDescriptionDataAsset`에서 유저 CSV 디렉토리 런타임 스캔, 내장+유저 레이아웃 통합 지원
+- **CSV 내보내기**: `ExportLayoutAsCSV()` (AW), `ExportJumpMapLayoutAsCSV()` (JumpMap, 11번째 Properties 컬럼 포함) - SaveGame 저장 시 CSV 자동 내보내기
+- **유저 레이아웃 자동 스캔**: `WallDescriptionDataAsset` (AW) / `JumpMapLayoutDataAsset` (JumpMap) 에서 유저 CSV 디렉토리 런타임 스캔
+- **JumpMap CheckpointOrder 자동 할당**: 체크포인트 배치 시 기존 최대 Order+1 자동 부여, 3D 텍스트 표시
+- **JumpMap 레이아웃 검증**: `ValidateJumpMapLayout()` — 체크포인트 최소 1개, 도착점 정확히 1개 검사
 
 ### Approaching Wall 미니게임
 첫 번째 미니게임. 벽이 점진적으로 다가오며 플레이어들이 안전 구역으로 이동해야 하는 PvP 게임.
@@ -81,7 +83,7 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트를 지원하는 확장된 �
 
 ### JumpMap 미니게임
 세 번째 미니게임. 장애물 코스를 통과하여 결승점에 도달하는 타임어택 레이스.
-- **WjWorldGameRuleJumpMap**: 시간 제한(120초), Z 낙하 감지, 체크포인트 리스폰, 완주 순서 추적
+- **WjWorldGameRuleJumpMap**: 시간 제한(120초), Z 낙하 감지, 체크포인트 리스폰, 완주 순서 추적, CSV 레이아웃 로딩 (`SpawnActorsFromLayout`)
 - **체크포인트 시스템**: CheckpointOrder 기반 진행 관리, 역주행 방지, 사망 시 마지막 체크포인트에서 리스폰
 - **장애물 액터**: KillZone (즉사), MovingPlatform (왕복 이동), RotatingObstacle (회전+킬/넉백), PushWind (방향성 바람)
 - **맵 구조 액터**: Checkpoint, End (도착 트리거), GrapplePoint (그래플 대상)
@@ -93,7 +95,9 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트를 지원하는 확장된 �
 - **에디터 도구**: WjWorldEditor 모듈의 JumpMapLevelEditorSubsystem + SJumpMapLayoutPanel (레벨 액터 일괄 저장/불러오기)
 - **승리 조건**: 전원 완주 or 시간 초과, 최단 시간 플레이어 우승
 - **엣지 케이스**: 솔로 자동, 전원 이탈, 플레이어 없음
-- **상태**: C++ 코드 완료 + 에디터 세팅 완료 (MinigameCatalog, InputMapping, CharacterPlaySetup, HUDPlay)
+- **유저 레이아웃 연동**: MapOption 기반 CSV 레이아웃 로딩, ObjectIdToActorClassMap(BP) + DeveloperSettings 폴백으로 액터 스폰, ApplySerializedProperties로 CheckpointOrder 등 적용
+- **대기실 유저 레이아웃 선택**: WaitingRoomHUDWidget에서 JumpMapLayoutDataAsset.ScanUserJumpMapLayouts()로 [User] 옵션 추가
+- **상태**: C++ 코드 완료 + 에디터 세팅 완료 + 유저 레이아웃 파이프라인 완료
 
 ### Gameplay Ability System
 GAS 기반 어빌리티 시스템. `UWjWorldGameplayAbilityBase`를 상속받아 각 어빌리티 구현.
