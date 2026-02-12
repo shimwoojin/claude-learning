@@ -245,6 +245,45 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 # WjWorld 개발 로그
 
 ## 2026-02-12
+### 작업 내용 - JumpMap 배치 모드 개선 (CustomProperties + 검증 + 유저 레이아웃 선택)
+
+#### JumpMap 배치 에디터 CustomProperties + CSV 11번째 컬럼 (미커밋)
+- **`FPlacedObjectSaveEntry`에 `TMap<FString, FString> CustomProperties` 필드 추가**
+  - UPROPERTY Serialization으로 자동 처리, 빈 맵은 기존 세이브와 하위 호환
+- **ConfirmPlacement에서 Checkpoint 배치 시 자동 CheckpointOrder 할당**
+  - 기존 배치된 체크포인트의 최대 Order를 조회 후 +1 자동 부여
+- **ExportJumpMapLayoutAsCSV에 11번째 Properties 컬럼 추가**
+  - `Key=Value|Key=Value` 형식으로 CustomProperties 직렬화 (JumpMapLayoutDataAsset ParseLayoutCSV와 호환)
+- **TickComponent에서 배치된 체크포인트 위에 `CP #N` 3D 텍스트 표시**
+  - DrawDebugString으로 노란색 텍스트, JumpMap 컨텍스트에서만 렌더링
+
+#### JumpMap 레이아웃 검증 시스템 (미커밋)
+- **`ValidateJumpMapLayout()` 구현** — 저장 전 필수 오브젝트 유효성 검사
+  - 체크포인트 최소 1개, 도착점 정확히 1개 검증
+  - JumpMapEditor HUD의 `ExecuteSave()` 오버라이드에서 검증 후 경고 로그 출력 (작업 중 세이브는 허용)
+- **JumpMapEditor 힌트 텍스트 업데이트** — T(축 전환), G(각도 전환), F(공중모드) 키 안내 추가
+
+#### GameRuleJumpMap CSV 레이아웃 로딩 (미커밋)
+- **`LoadLayoutAndSpawnActors()` 리팩토링** — MapOption 기반 CSV 레이아웃 로드 지원
+  - Default/Random이 아닌 MapOption → JumpMapLayoutDataAsset에서 CSV 레이아웃 검색
+  - CSV 레이아웃 없으면 기존 맵 배치 액터 사용 (폴백)
+- **`SpawnActorsFromLayout()` 신규** — CSV 엔트리 → 액터 스폰 + ApplySerializedProperties
+  - ObjectIdToActorClassMap(BP 프로퍼티) 우선, DeveloperSettings JumpMapObjectIdToClassMap 폴백
+
+#### WaitingRoom JumpMap 유저 레이아웃 선택 (미커밋)
+- **`UpdateMapComboBoxForGameMode()`에 JumpMap 유저 레이아웃 스캔 추가**
+  - AW 패턴과 동일하게 `ScanUserJumpMapLayouts()` → `[User] {이름}` 형식 콤보박스 옵션
+
+#### 빌드 검증
+- 전체 빌드 성공 확인 (15 actions, 0 errors)
+
+### 학습/메모
+- `FPlacedObjectSaveEntry`에 TMap 추가 시 UPROPERTY 시리얼라이제이션으로 자동 처리되어 SaveVersion 변경 불필요 — 빈 맵은 기존 세이브와 하위 호환
+- AW 유저 레이아웃 패턴(WallDescriptionDataAsset.ScanUserWallLayouts → WaitingRoom 콤보박스 → MapOption → GameRule 로딩)을 JumpMap에 그대로 적용 가능 — 일관된 아키텍처의 장점
+- CSV 11번째 Properties 컬럼은 `JumpMapLayoutDataAsset::ParseLayoutCSV`가 이미 지원하므로 내보내기만 추가하면 완전한 왕복 직렬화 가능
+
+---
+
 ### 작업 내용 - Lobby 배치 모드 카메라 Pawn 전환 + JumpMap 에디터 에셋/Intro 영상
 
 #### JumpMap 에디터 에셋 + 에셋 팩 + Intro 영상 (커밋 7682d45)
@@ -281,10 +320,18 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - Possession 전환 시 PlacementComponent(PC의 DefaultSubobject)는 생존하지만, InputComponent는 새 Pawn 것으로 교체됨 → 반드시 Possess 후 BindInputActions 호출 필요
 - OnPlacementModeChanged 델리게이트로 ESC/HUD Exit 등 모든 종료 경로를 통합하면 코드 중복 없이 안전한 cleanup 보장
 
-### 에디터 세팅 TODO
-- InputAction 4개 생성: `IA_PlacementCameraMove`, `IA_PlacementCameraLook`, `IA_PlacementCameraRightMouse`, `IA_PlacementCameraVerticalMove`
-- `IMC_Placement`에 매핑 추가
-- DeveloperSettings > Placement|Camera Input에서 할당
+### 에디터 세팅 완료
+- ~~InputAction 4개 생성~~ ✓ `IA_PlacementCameraMove`, `IA_PlacementCameraLook`, `IA_PlacementCameraRightMouse`, `IA_PlacementCameraVerticalMove`
+- ~~`IMC_Placement`에 매핑 추가~~ ✓
+- ~~DeveloperSettings > Placement|Camera Input에서 할당~~ ✓
+
+#### JumpMap 맵 레벨 + BP/DataAsset 에디터 세팅 완료
+- JumpMap 맵 레벨 생성 + 패키징 맵 목록 추가
+- BP_GameRuleJumpMap 생성 (ObjectIdToActorClassMap 프로퍼티 설정)
+- JumpMap PlaceableCatalog DataAsset 생성
+
+#### Sumo Knockoff 6대 기능 에디터 세팅 완료
+- BP 프로퍼티 할당, 링 배치, HUD 위젯, 파워업 BP 생성
 
 ---
 
@@ -295,53 +342,6 @@ NetConnectionClassName="/Script/SocketSubsystemSteamIP.SteamNetConnection"
 - `WjWorldPlacementComponent::DeleteLayoutSlot()` 추가 — SaveGame + 컨텍스트별 CSV 파일 삭제
 - `PlacementLoadDialogWidget` X 삭제 버튼 추가 — HorizontalBox 레이아웃 [슬롯이름(Fill) | X(Auto)]
 - `PlacementHUDWidgetBase::OnSlotDeleteRequested()` 핸들러 — 삭제 후 다이얼로그 내 슬롯 목록 인플레이스 갱신
-- `PlacementSaveDialogWidget` 슬롯 유효성 표시 개선
-
-#### Bug 1: BrickMovement 대각선 이동 3-4칸 → 1칸 수정
-- **원인**: `GetMovementVector()`에서 `GetNextDirections()`가 반환한 모든 방향을 for 루프로 전부 적용
-- **수정**: 하나의 방향만 선택, 이전 이동 방향과 일치하는 방향 우선 (관성 유지)
-
-#### Bug 2: 클라이언트 프리뷰 offset 50,50 수정
-- **원인**: 클라이언트에서 유저 CSV 파일 부재 → 잘못된 WallDesc(CenterOffset)로 폴백
-- **수정**: `ApproachingWallGameDataComponent`에 `WallBrickSize/WallCenterOffset/WallColumnNum/WallRowNum` 리플리케이트 추가
-- `OnWallSpawnFinished()`에서 설정, GA_SpawnBrick/GA_LiftBrick에서 리플리케이트된 값으로 보정
-
-#### Bug 3: 클라이언트 GA_LiftBrick 1프레임 취소 수정
-- **원인**: 서버가 독립적으로 `CalculatePickupLocation()` 실행 시 네트워크 지연으로 다른 위치 계산 → 벽돌 미발견 → `EndAbility(replicate)` 취소
-- **수정**: `ServerLiftBrickAtGridIndex` Server RPC 패턴 적용 (GA_SpawnBrick의 `ServerSpawnBrickAtGridIndex`와 동일)
-  - 클라이언트: 그리드 인덱스 계산 → RPC 전송
-  - 서버: 클라이언트 지정 인덱스로 벽돌 탐색/파괴 (`ServerHandleBrickPickup`)
-  - `HasAuthority()` 블록 제거 → RPC 핸들러로 이전
-
-### 학습/메모
-- `LocalPredicted` 어빌리티에서 서버가 avatar 위치/회전을 기반으로 독립 판단하면 네트워크 지연으로 클라이언트와 불일치 발생 → 클라이언트가 계산한 결과를 Server RPC로 전달하는 패턴이 안정적
-- `FIntPoint`에는 `IsZero()` 메서드가 없음 → `(X != 0 || Y != 0)` 으로 체크
-- `BrickMovement::GetNextDirections()`는 FloodFill 경계점의 8방향 인접 셀을 모두 반환 — 이동 시 반드시 하나만 선택해야 함
-
-### 이슈/해결
-- 잔존 버그: #3(Sumo) Host 관전 Yaw, #4(Sumo) 유저 맵 클라이언트 벽돌 스폰 위치 — 미해결
-- JumpMap 맵 레벨 생성 + 패키징 맵 목록 추가 필요
-
----
-
-## 2026-02-10
-### 작업 내용 - JumpMap 미니게임 전체 구현
-
-#### JumpMap C++ 코드 구현 (Agent Teams 4병렬)
-- GameRule: `WjWorldGameRuleJumpMap` — 시간 제한, 체크포인트 리스폰, 완주 추적, Z 낙하 감지
-- GameData: `JumpMapGameDataComponent` (ElapsedTime, PlayerFinishOrder), `JumpMapPlayerDataComponent` (Checkpoint, DeathCount)
-- 장애물 액터 7종: KillZone, MovingPlatform, RotatingObstacle, PushWind, Checkpoint, End, GrapplePoint
-- 레이아웃: `JumpMapLayoutDataAsset` — 내장+유저 CSV 파싱 (`#META:MapName:` 지원)
-- 어빌리티 3종: GA_Dash (전방 대시), GA_Grapple (라인트레이스→당김), GA_DoubleJump (공중 점프)
-- HUD: `JumpMapHUDWidget` — 타이머, 체크포인트, 사망 횟수, 순위표
-- 통합: WjTypes(Ability8/9/10), GameplayTags(5개), Stats(JumpMap 네임스페이스), DeveloperSettings, PlacementTypes
-
-#### 코드 리뷰 중 버그 수정 (4건)
-- KillZoneActor: `Character->OnEliminated()` → `GameRule->OnPlayerDied()` (영구 제거→체크포인트 리스폰)
-- EndActor: GameRule 호출 누락 → `GameRule->OnPlayerFinished()` 추가
-- RotatingObstacleActor: 킬 모드에서 동일 수정
-- CheckpointActor: PlayerData 갱신 누락 → `SetCurrentCheckpointIndex()` + 역주행 방지 로직
-
 
 ---
 *마지막 동기화: 2026-02-12*
