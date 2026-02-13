@@ -6,6 +6,7 @@ Claude Code와의 모든 대화 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-13 | WjWorld | [재화 시스템 구현 + JumpMap 버그 수정 모음](./2026-02-13-wjworld-currency-system-jumpmap-fixes.md) | #Currency #SteamInventory #JumpMap #bugfix #Replication #InputMode #GameRule #EditorSubsystem |
 | 2026-02-12 | WjWorld | [JumpMap 배치 모드 개선 — CustomProperties + 검증 + 유저 레이아웃](./2026-02-12-wjworld-jumpmap-placement-improvements.md) | #PlacementSystem #JumpMap #CSV #Validation #WaitingRoom #GameRule #UE5 |
 | 2026-02-12 | WjWorld | [Lobby 배치 모드 카메라 Pawn + 카메라 회전 버그 수정](./2026-02-12-wjworld-placement-camera-pawn.md) | #UE5 #PlayerController #Pawn #PlacementSystem #Camera #Input #GamePlayCamera #bugfix |
 | 2026-02-10 | WjWorld | [JumpMap 미니게임 전체 구현](./2026-02-10-wjworld-jumpmap-minigame-impl.md) | #Minigame #JumpMap #GameRule #GAS #Ability #TeamAgent #Layout #HUD #Replication |
