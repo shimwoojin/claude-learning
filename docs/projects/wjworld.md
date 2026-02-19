@@ -30,7 +30,7 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트 지원.
 - **EPlacementContext** 열거형, **IWjWorldPlacementDataProvider** GameState 인터페이스
 - **PlacementComponent**: 컨텍스트별 저장/로드/삭제, `ValidateJumpMapLayout()` 검증
 - **PreviewActor**: 유효/무효 색상, 비동기 메시 로드, 회전 축(Yaw/Pitch/Roll) 전환
-- **PlacedObjectActor**: ObjectId 저장, 삭제 하이라이트
+- **PlacedObjectActor**: ObjectId 저장, 삭제 하이라이트, `ActorClassOverride`로 서브클래스 스폰 분기
 - **LayoutSaveGame**: `FPlacedObjectSaveEntry.CustomProperties` (JumpMap CheckpointOrder 등)
 - **입력**: LMB(배치), R(회전), T(축 전환), G(각도 전환), DEL(삭제), F(공중모드), ESC(종료)
 - **CSV 내보내기**: AW(`Content/WallLayouts/User/`), JumpMap(`Content/JumpMapLayouts/User/`, 11번째 Properties 컬럼)
@@ -77,8 +77,17 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **Config**: DriverClassName `/Script/ModuleName.ClassName` 정규 경로 필수
 - **LAN 소켓 충돌**: SocketSubsystemSteamIP가 기본 소켓 오버라이드 → WjWorldLanNetDriver로 해결
 
+### 보물상자 시스템
+`AWjWorldTreasureChestActor` — `AWjWorldPlacedObjectActor` 서브클래스. 로비 배치 상호작용 오브젝트.
+- **상호작용**: BoxComponent 오버랩 → EnableInput + EnhancedInput BindAction(F키) → OnInteract
+- **보상**: `CurrencySubsystem->GrantCurrencyLocally(Coin, RewardAmount)`
+- **쿨타임**: per-player 로컬 GConfig (`TreasureChestCooldown.ini`), 위치 해시 키 (`Chest_X_Y_Z`)
+- **비주얼**: DMI 어두운 회색 틴트 (쿨타임 중), UI 프롬프트 (InteractionWidget)
+- **ActorClassOverride**: `FPlaceableObjectDefinition`에 스폰 클래스 분기 필드 → GameStateLobby에서 사용
+- **DeveloperSettings**: `TreasureChest` 카테고리 (CoinReward, CooldownSeconds, InteractAction, WidgetClass)
+
 ### WjWorldDeveloperSettings
-Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기본값, 미니게임 에셋, 배치 카탈로그, 카메라 InputAction.
+Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기본값, 미니게임 에셋, 배치 카탈로그, 카메라 InputAction, 보물상자 설정.
 **설정 우선순위**: BP 서브클래스 UPROPERTY 값 우선 → DeveloperSettings 폴백
 
 ### 패키징 주의사항
@@ -88,6 +97,7 @@ Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기
 
 ## 진행 중 / 미구현
 - Steam 정식 출시 준비
+- 보물상자 BP 작업 필요: PlaceableObjectDataAsset에 ObjectId 등록, ActorClassOverride 설정, InteractAction/WidgetClass 에디터 설정
 
 ## 잔존 버그
 - (현재 없음)
@@ -125,6 +135,45 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 ## 최근 개발 로그
 
 # WjWorld 개발 로그
+
+## 2026-02-19
+### 작업 내용 - 보물상자 로비 배치 오브젝트 구현
+
+#### 배치 시스템 확장 — ActorClassOverride
+- **`WjWorldPlaceableObjectDataAsset.h`** — `FPlaceableObjectDefinition`에 `TSubclassOf<AWjWorldPlacedObjectActor> ActorClassOverride` 필드 추가
+- **`WjWorldGameStateLobby.cpp`** — `RespawnAllPlacedObjects()`에서 `ActorClassOverride` 설정 시 해당 클래스로 스폰, 미설정 시 기본 `AWjWorldPlacedObjectActor` 사용 (하위 호환)
+- 향후 자판기, NPC 등 상호작용 배치 오브젝트 확장에 동일 패턴 적용 가능
+
+#### TreasureChestActor 신규 구현
+- **`GamePlay/TreasureChest/WjWorldTreasureChestActor.h/.cpp` 생성** — `AWjWorldPlacedObjectActor` 서브클래스
+  - **상호작용**: BoxComponent 오버랩 → EnableInput + EnhancedInput BindAction(F키) → OnInteract
+  - **보상**: `CurrencySubsystem->GrantCurrencyLocally(Coin, RewardAmount)` 호출
+  - **쿨타임**: per-player GConfig 저장 (`TreasureChestCooldown.ini`), 위치 해시 키 (`Chest_X_Y_Z`), `FDateTime::UtcNow` ISO8601 저장
+  - **비주얼**: DMI 어두운 회색 틴트 (쿨타임 중), InteractionWidget UI 프롬프트
+  - **뚜껑 메시**: `LidMeshComponent` 추가 (`RelativeLocation(0,-60,-60)`), Roll 회전 애니메이션 (0 → -120도)
+  - **애니메이션**: Tick 기반 보간 (200도/초), 완료 시 Tick 자동 비활성화, `BeginPlay`에서 쿨타임 상태 따라 즉시 열림/닫힘
+
+#### DeveloperSettings 확장
+- **`WjWorldDeveloperSettings.h`** — TreasureChest 카테고리 추가
+  - `TreasureChestCoinReward` (기본 50), `TreasureChestCooldownSeconds` (기본 86400초=24시간)
+  - `TreasureChestInteractAction` (F키 InputAction), `TreasureChestWidgetClass` (상호작용 UI)
+
+#### CLAUDE.md 갱신
+- 폴더 구조에 `TreasureChest/` 추가, 클래스 계층에 `PlacedObject → TreasureChestActor` 추가
+- 보물상자 시스템 섹션 신규 작성, DeveloperSettings 설명 갱신
+- 진행 중/미구현에 BP 작업 필요 항목 추가
+
+### 학습/메모
+- `FPlaceableObjectDefinition`에 `ActorClassOverride`를 두면 기존 배치 시스템 변경 없이 서브클래스 스폰 가능 — 확장 패턴으로 유용
+- `EnableInput(PC)` → UE5에서 자동으로 EnhancedInputComponent 생성 → `BindAction` 가능 (InteractablePortal 참조)
+- Tick 기반 애니메이션: `bStartWithTickEnabled=false`, 애니메이션 시작 시 `SetActorTickEnabled(true)`, 완료 시 false — 불필요한 Tick 비용 방지
+
+### 남은 작업
+- BP 작업: PlaceableObjectDataAsset에 보물상자 ObjectId 등록, ActorClassOverride 설정
+- DeveloperSettings에 InteractAction / WidgetClass 에디터 설정
+- LidMeshComponent에 뚜껑 StaticMesh 할당
+
+---
 
 ## 2026-02-13
 ### 작업 내용 - 재화 시스템 구현 + JumpMap 버그 수정 모음
@@ -186,45 +235,6 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - **TickComponent에서 배치된 체크포인트 위에 `CP #N` 3D 텍스트 표시**
   - DrawDebugString으로 노란색 텍스트, JumpMap 컨텍스트에서만 렌더링
 
-#### JumpMap 레이아웃 검증 시스템 (미커밋)
-- **`ValidateJumpMapLayout()` 구현** — 저장 전 필수 오브젝트 유효성 검사
-  - 체크포인트 최소 1개, 도착점 정확히 1개 검증
-  - JumpMapEditor HUD의 `ExecuteSave()` 오버라이드에서 검증 후 경고 로그 출력 (작업 중 세이브는 허용)
-- **JumpMapEditor 힌트 텍스트 업데이트** — T(축 전환), G(각도 전환), F(공중모드) 키 안내 추가
-
-#### GameRuleJumpMap CSV 레이아웃 로딩 (미커밋)
-- **`LoadLayoutAndSpawnActors()` 리팩토링** — MapOption 기반 CSV 레이아웃 로드 지원
-  - Default/Random이 아닌 MapOption → JumpMapLayoutDataAsset에서 CSV 레이아웃 검색
-  - CSV 레이아웃 없으면 기존 맵 배치 액터 사용 (폴백)
-- **`SpawnActorsFromLayout()` 신규** — CSV 엔트리 → 액터 스폰 + ApplySerializedProperties
-  - ObjectIdToActorClassMap(BP 프로퍼티) 우선, DeveloperSettings JumpMapObjectIdToClassMap 폴백
-
-#### WaitingRoom JumpMap 유저 레이아웃 선택 (미커밋)
-- **`UpdateMapComboBoxForGameMode()`에 JumpMap 유저 레이아웃 스캔 추가**
-  - AW 패턴과 동일하게 `ScanUserJumpMapLayouts()` → `[User] {이름}` 형식 콤보박스 옵션
-
-#### 빌드 검증
-- 전체 빌드 성공 확인 (15 actions, 0 errors)
-
-### 학습/메모
-- `FPlacedObjectSaveEntry`에 TMap 추가 시 UPROPERTY 시리얼라이제이션으로 자동 처리되어 SaveVersion 변경 불필요 — 빈 맵은 기존 세이브와 하위 호환
-- AW 유저 레이아웃 패턴(WallDescriptionDataAsset.ScanUserWallLayouts → WaitingRoom 콤보박스 → MapOption → GameRule 로딩)을 JumpMap에 그대로 적용 가능 — 일관된 아키텍처의 장점
-- CSV 11번째 Properties 컬럼은 `JumpMapLayoutDataAsset::ParseLayoutCSV`가 이미 지원하므로 내보내기만 추가하면 완전한 왕복 직렬화 가능
-
 ---
-
-### 작업 내용 - Lobby 배치 모드 카메라 Pawn 전환 + JumpMap 에디터 에셋/Intro 영상
-
-#### JumpMap 에디터 에셋 + 에셋 팩 + Intro 영상 (커밋 7682d45)
-- JumpMap 에디터 에셋 세팅 완료
-- Platformer_8_Underworld 에셋 팩 추가
-- Intro 영상 추가
-
-#### Lobby 배치 모드 자유 비행 카메라 Pawn 구현
-- **`AWjWorldPlacementCameraPawn`** 신규 생성 — APawn + UCameraComponent + UFloatingPawnMovement
-  - WASD 수평 이동 (컨트롤러 Yaw 기준), Q/E 수직 이동
-  - RMB 홀드 + 마우스 회전 (커서 유지), `bReplicates = false` 로컬 전용
-
----
-*마지막 동기화: 2026-02-13*
+*마지막 동기화: 2026-02-19*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
