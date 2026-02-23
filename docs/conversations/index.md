@@ -6,6 +6,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-23 | WjWorld | [코스메틱 아이템 DefId 카테고리별 재넘버링](./2026-02-23-wjworld-cosmetic-defid-renumbering.md) | #SteamInventory #itemdefs #Cosmetic #Numbering |
 | 2026-02-23 | WjWorld | [공용 확인 다이얼로그 + Clear 기능 + 구매/설치 로직 수정](./2026-02-23-wjworld-confirm-dialog-clear-purchase-logic.md) | #PlacementSystem #UI #Widget #PurchaseSystem #DesignPattern |
 | 2026-02-23 | WjWorld | [Steam ExchangeItems 구현 + 보물상자 버그 수정 + 테스트 치트](./2026-02-23-wjworld-steam-exchange-treasure-cheats.md) | #SteamInventory #ExchangeItems #TreasureChest #GConfig #bugfix #DebugTools #itemdefs |
 | 2026-02-19 | WjWorld | [보물상자 Steam 보안 강화 + 코스메틱 버그 수정](./2026-02-19-wjworld-treasure-chest-steam-cosmetic-fixes.md) | #TreasureChest #SteamInventory #Cosmetic #bugfix #Security #GConfig #FDateTime |
