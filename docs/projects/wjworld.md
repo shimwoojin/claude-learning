@@ -35,6 +35,13 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트 지원.
 - **입력**: LMB(배치), R(회전), T(축 전환), G(각도 전환), DEL(삭제), F(공중모드), ESC(종료)
 - **CSV 내보내기**: AW(`Content/WallLayouts/User/`), JumpMap(`Content/JumpMapLayouts/User/`, 11번째 Properties 컬럼)
 - **유저 레이아웃**: `WallDescriptionDataAsset`/`JumpMapLayoutDataAsset`에서 유저 CSV 런타임 스캔
+- **구매 시스템 (Lobby 전용)**: `FPlaceableObjectDefinition.CoinPrice/SteamItemDefId/MaxPlacementCount`, `DeveloperSettings.MaxTotalLobbyPlacedObjects`
+  - **소유권**: `CosmeticSubsystem.GetItemQuantityByDefId()` (AllItemQuantities 캐시)
+  - **구매**: `CurrencySubsystem.PurchasePlacementObject()` → Steam ExchangeItems / 비Steam GConfig
+  - **제한**: SelectObject() 소유권 게이트, ConfirmPlacement()+GameStateLobby 서버 측 수량 검증
+  - **UI**: PopulateCatalog()에서 소유/가격/수량 표시, 미소유 클릭→구매
+  - **비Steam 폴백**: GConfig `[PlacementInventory]` 섹션
+  - **테스트**: `Placement_Buy`, `Placement_PrintInventory`, `Placement_GrantItem` 콘솔 명령어
 
 ### Approaching Wall 미니게임
 벽이 다가오며 안전 구역으로 이동하는 PvP. BrickSpawner(비동기 8개/틱) → BrickMovement(단일 방향 선택) → WallManager(레벨별 속도). 12초마다 레벨업, Flood Fill 안전 구역 축소, TileActor 폭탄 신호.
@@ -77,14 +84,25 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **Config**: DriverClassName `/Script/ModuleName.ClassName` 정규 경로 필수
 - **LAN 소켓 충돌**: SocketSubsystemSteamIP가 기본 소켓 오버라이드 → WjWorldLanNetDriver로 해결
 
+### 재화 시스템
+`UWjWorldCurrencySubsystem` — Coin/Gem 재화 관리. Steam Inventory 기반 + 비Steam GConfig 폴백.
+- **잔액 조회**: `GetBalance()`, `GetAllBalances()` — Steam 환경에서 `GetAllItems` 단일 패스로 잔액 + 인스턴스 ID 동시 캐싱
+- **미니게임 보상**: `TriggerMatchReward()` → Steam `TriggerItemDrop` / 비Steam 로컬 부여
+- **코스메틱 구매**: `PurchaseItemWithCurrency()` → Steam `ExchangeItems` (캐시된 인스턴스 ID 사용) / 비Steam 로컬 차감
+- **유료 재화 팩**: `PurchaseGemPack()` → Steam `StartPurchase` → 오버레이 결제 UI
+- **폴링**: Exchange 결과 0.5초, Gem 구매 1초 주기 폴링 + 300초 타임아웃
+- **로컬 저장**: `GGameUserSettingsIni` (cross-session 안정)
+- **테스트**: `Currency_GrantCoin/Gem`, `Currency_SetCoin/Gem`, `Currency_Print/Refresh`, `Steam_ConsumeCurrency`, `Steam_ConsumeAllItems` 콘솔 명령어
+
 ### 보물상자 시스템
 `AWjWorldTreasureChestActor` — `AWjWorldPlacedObjectActor` 서브클래스. 로비 배치 상호작용 오브젝트.
 - **상호작용**: BoxComponent 오버랩 → EnableInput + EnhancedInput BindAction(F키) → OnInteract
-- **보상**: `CurrencySubsystem->GrantCurrencyLocally(Coin, RewardAmount)`
-- **쿨타임**: per-player 로컬 GConfig (`TreasureChestCooldown.ini`), 위치 해시 키 (`Chest_X_Y_Z`)
-- **비주얼**: DMI 어두운 회색 틴트 (쿨타임 중), UI 프롬프트 (InteractionWidget)
+- **보상**: Steam `TriggerItemDrop`(ChestIndex별 독립 generator DefId 300~309) / 비Steam `GrantCurrencyLocally`
+- **쿨타임**: `FDateTime CachedLastOpenedTime` 인메모리 캐시 + `GGameUserSettingsIni` 영속 저장, 위치 해시 키 (`Chest_X_Y_Z`)
+- **비주얼**: DMI 어두운 회색 틴트 (쿨타임 중), UI 프롬프트 (InteractionWidget), 뚜껑 Roll 애니메이션
 - **ActorClassOverride**: `FPlaceableObjectDefinition`에 스폰 클래스 분기 필드 → GameStateLobby에서 사용
-- **DeveloperSettings**: `TreasureChest` 카테고리 (CoinReward, CooldownSeconds, InteractAction, WidgetClass)
+- **DeveloperSettings**: `TreasureChest` 카테고리 (CoinReward, CooldownSeconds, InteractAction, WidgetClass, GeneratorStartDefId)
+- **테스트**: `TreasureChest_ClearCooldowns` 콘솔 명령어
 
 ### WjWorldDeveloperSettings
 Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기본값, 미니게임 에셋, 배치 카탈로그, 카메라 InputAction, 보물상자 설정.
@@ -98,6 +116,7 @@ Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기
 ## 진행 중 / 미구현
 - Steam 정식 출시 준비
 - 보물상자 BP 작업 필요: PlaceableObjectDataAsset에 ObjectId 등록, ActorClassOverride 설정, InteractAction/WidgetClass 에디터 설정
+- 배치 오브젝트 에디터 설정 필요: DataAsset에서 각 오브젝트의 CoinPrice/SteamItemDefId/MaxPlacementCount 입력, BP 위젯에 TotalPlacementCountText 바인딩
 
 ## 출시 전 체크리스트
 - `Steam/itemdefs.json`: 보물상자(Treasure Chest #0~#9) `drop_max_per_window`를 `100` → `1`로 되돌리기 (현재 테스트용 100)
@@ -139,6 +158,77 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 
 # WjWorld 개발 로그
 
+## 2026-02-23 (2)
+### 작업 내용
+
+#### 로비 배치 오브젝트 구매 시스템 구현
+- **데이터 모델 확장** — `FPlaceableObjectDefinition`에 `CoinPrice`, `SteamItemDefId`, `MaxPlacementCount` 추가. `DeveloperSettings`에 `MaxTotalLobbyPlacedObjects` 추가
+- **소유권 추적** — `CosmeticSubsystem`의 `ParseInventoryResult()`에서 전체 DefId별 수량 캐시(`AllItemQuantities`) 추가. `GetItemQuantityByDefId()` API 추가
+- **구매 흐름** — `CurrencySubsystem::PurchasePlacementObject()` 추가. 기존 `ExchangeItems` 인프라 공유, `bPendingIsPlacement` 분기로 `OnPlacementPurchaseComplete`/`OnCurrencyPurchaseComplete` 분리
+- **배치 제한** — `PlacementComponent::SelectObject()`에 소유권 게이트, `ConfirmPlacement()`에 종류당/전체 수량 게이트 추가. `GameStateLobby::AddPlacedObject()`에 서버 측 동일 검증 추가
+- **UI 갱신** — `PlacementHUDWidgetBase::PopulateCatalog()`에서 소유/미소유/가격/수량 표시. 미소유 클릭 시 구매 시도. `OnObjectPlaced`/`OnObjectDeleted`/`OnPlacementPurchaseComplete`/`OnInventoryUpdated` 구독으로 자동 리프레시
+- **비Steam 폴백** — GConfig `[PlacementInventory]` 섹션에 `ObjectId=Quantity` 저장/로드. `LoadPlacementInventoryFromLocal()`로 초기화 시 `AllItemQuantities` 복원
+- **Steam itemdefs** — DefId 200~202 (Chair, Table, Lamp) 배치 오브젝트 아이템 등록, `exchange: "1000x{가격}"`
+- **테스트 치트** — `Placement_Buy <ObjectId>`, `Placement_PrintInventory`, `Placement_GrantItem <ObjectId> [Qty]` 콘솔 명령어
+
+### 변경 파일
+- `DataAsset/WjWorldPlaceableObjectDataAsset.h`
+- `Setting/WjWorldDeveloperSettings.h`
+- `Cosmetic/WjWorldCosmeticSubsystem.h/.cpp`
+- `Currency/WjWorldCurrencySubsystem.h/.cpp`
+- `GamePlay/Placement/WjWorldPlacementComponent.h/.cpp`
+- `Core/Local/Lobby/WjWorldGameStateLobby.cpp`
+- `UI/Placement/PlacementHUDWidgetBase.h/.cpp`
+- `Core/Base/WjWorldPlayerControllerBase.h/.cpp`
+- `Steam/itemdefs.json`
+
+### 참고
+- Lobby 컨텍스트만 구매/소유권 적용. AW/JumpMap은 기존대로 자유 배치
+- `TotalPlacementCountText`는 BP 위젯에 바인딩 필요 (BindWidgetOptional이라 없어도 동작)
+- DataAsset에서 실제 오브젝트의 CoinPrice/SteamItemDefId/MaxPlacementCount 설정은 에디터에서 수동 입력 필요
+
+---
+
+## 2026-02-23
+### 작업 내용
+
+#### Steam ExchangeItems 실제 구현 (CurrencySubsystem)
+- **PurchaseItemWithCurrency() Steam 분기 교체** — stub(로컬 차감+GrantItemLocally)를 실제 `ISteamInventory::ExchangeItems()` 호출로 교체
+- **RefreshBalancesFromInventory() 리팩터** — `GetItemQuantityFromInventory()` 2회 호출 → 단일 `GetAllItems` 패스로 잔액 + `SteamItemInstanceID_t` 동시 캐싱
+- **인스턴스 ID 캐시 추가** — `CachedCoinInstanceId`, `CachedGemInstanceId` (`ExchangeItems`에 필수)
+- **Deinitialize()** — 인스턴스 ID 리셋 추가
+
+#### 보물상자 쿨타임/보상 버그 수정
+- **GConfig 세션간 영속성 수정** — 커스텀 ini 파일 → `GGameUserSettingsIni`로 통일 (TreasureChest, Currency, Cosmetic 3곳)
+- **인메모리 캐시 추가** — `FDateTime CachedLastOpenedTime`으로 GConfig read-back 불안정 해결, F키 스팸 방지
+- **itemdefs.json 보상 수량 수정** — `playtimegenerator`의 `bundle` 필드는 weight(확률)임을 발견, 중간 bundle 아이템(DefId 50,51,52) 추가로 Coin 50개 정상 지급
+- **drop_interval 수정** — 1440(24시간 플레이타임) → 1(1분)로 변경
+
+#### 테스트 치트 명령어 추가
+- `Steam_ConsumeAllItems` — 인벤토리 전체 초기화 (GetAllItems 순회 → ConsumeItem)
+- `Steam_ConsumeCurrency` — Coin/Gem만 소비
+- `TreasureChest_ClearCooldowns` — TActorIterator로 모든 보물상자 로컬 쿨타임 초기화
+- `TreasureChestActor::ResetCooldown()` — 캐시 초기화 + GConfig 키 삭제 + 비주얼 복원
+
+#### itemdefs.json 테스트 설정
+- 보물상자 `drop_max_per_window`: 1 → 100 (테스트용, 출시 전 1로 복원 필요)
+- CLAUDE.md에 출시 전 체크리스트 섹션 추가
+
+### 학습/메모
+- **Steam `playtimegenerator` bundle 필드**: `"1000x50"`에서 `x50`은 수량이 아니라 **weight(확률 가중치)**. 실제 수량 지급은 `type: "bundle"` 중간 아이템 필요
+- **Steam `drop_window`/`drop_max_per_window`**: 서버 측 rate limit으로 클라이언트/Web API로 초기화 불가. 테스트 시 `drop_max_per_window`를 높이는 것이 유일한 우회법
+- **GConfig 커스텀 ini**: `FPaths::GeneratedConfigDir() + "Custom.ini"`는 UE 재시작 시 자동 로드 안됨. `GGameUserSettingsIni`가 cross-session 안정적
+- **Steam Web API vs Client API**: `IInventoryService/ConsumeItem` Web API는 Publisher Key 필요 (보안 위험). 클라이언트 `ISteamInventory::ConsumeItem`으로 동일 결과 가능
+- **Steam `StartPurchase`**: `price` 필드가 있는 아이템에 대해 Steam 오버레이 결제 UI 팝업 → 실결제 진행
+
+### 이슈/해결
+- **Coin 1개만 지급**: playtimegenerator bundle의 weight/quantity 혼동 → 중간 bundle 아이템으로 해결
+- **쿨타임 미저장 (세션간)**: 커스텀 ini 미로드 → GGameUserSettingsIni로 전환
+- **쿨타임 미동작 (세션내)**: GConfig read-back 불안정 → FDateTime 인메모리 캐시로 해결
+- **ExchangeItems stub**: 로컬 차감만 하고 서버 미반영 → 인스턴스 ID 캐싱 + 실제 API 호출로 교체
+
+---
+
 ## 2026-02-19
 ### 작업 내용 - 보물상자 로비 배치 오브젝트 구현
 
@@ -166,77 +256,6 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - 보물상자 시스템 섹션 신규 작성, DeveloperSettings 설명 갱신
 - 진행 중/미구현에 BP 작업 필요 항목 추가
 
-### 학습/메모
-- `FPlaceableObjectDefinition`에 `ActorClassOverride`를 두면 기존 배치 시스템 변경 없이 서브클래스 스폰 가능 — 확장 패턴으로 유용
-- `EnableInput(PC)` → UE5에서 자동으로 EnhancedInputComponent 생성 → `BindAction` 가능 (InteractablePortal 참조)
-- Tick 기반 애니메이션: `bStartWithTickEnabled=false`, 애니메이션 시작 시 `SetActorTickEnabled(true)`, 완료 시 false — 불필요한 Tick 비용 방지
-
-### 남은 작업
-- BP 작업: PlaceableObjectDataAsset에 보물상자 ObjectId 등록, ActorClassOverride 설정
-- DeveloperSettings에 InteractAction / WidgetClass 에디터 설정
-- LidMeshComponent에 뚜껑 StaticMesh 할당
-
----
-
-## 2026-02-13
-### 작업 내용 - 재화 시스템 구현 + JumpMap 버그 수정 모음
-
-#### 재화 시스템 (Currency System) 신규 구현
-- **`WjWorldCurrencyTypes.h` 생성** — `ECurrencyType` (Coin/Gem), `FCurrencyBalance` 구조체
-- **`WjWorldCurrencySubsystem.h/.cpp` 생성** — GameInstanceSubsystem 기반
-  - GetBalance, TriggerMatchReward, PurchaseItemWithCurrency, PurchaseGemPack, RefreshBalancesFromInventory
-  - Steam Inventory API 연동 (TriggerItemDrop, ExchangeItems, StartPurchase)
-  - 비Steam GConfig 기반 로컬 잔액 폴백
-  - CosmeticSubsystem.OnInventoryUpdated 구독하여 잔액 자동 갱신
-- **`WjWorldDeveloperSettings.h`** — Currency 카테고리 추가 (CoinSteamItemDefId, GemSteamItemDefId, MatchWin/LossRewardDefId)
-- **`WjWorldCosmeticDataAsset.h`** — FCosmeticItemDefinition에 CoinPrice/GemPrice 필드 추가
-- **`Steam/itemdefs.json` 확장** — WjCoin(1000), WjGem(1001), playtimegenerator(10/11), GemPack(20/21), exchange 레시피
-- **`WjWorldGameStatePlay.cpp`** — 게임 종료 시 CurrencySubsystem.TriggerMatchReward() 호출 추가
-- **`WjWorldLogCategories`** — LogWjWorldCurrency 카테고리 추가
-
-#### JumpMap 버그 수정
-- **방 만들기에서 JumpMap 유저 맵 미노출 수정** — `CreateRoomWindow::AddUserMapOptions`에 JumpMap 분기 구현
-- **TMap 리플리케이션 에러 수정** — `WjWorldGameDataComponent`의 TMap UPROPERTY 제거 (TMap은 리플리케이션 미지원)
-- **JumpMap 에디터 서브시스템 리팩토링** — CSV 기반에서 DataAsset BuiltInLayouts 기반으로 전환
-- **bIsDefaultPlacement 플래그 추가** — JumpMapActorBase에 기본 배치 액터 보호 플래그, 에디터 Save/Clear에서 제외
-- **Default 맵 로딩 수정** — `GameRuleJumpMap::LoadLayoutAndSpawnActors`에서 Default MapOption이 BuiltInLayouts[0] 로드하도록 수정
-- **GameModePlay InputMode 수정** — PlayerControllerPlay BeginPlay에서 FInputModeGameOnly 설정
-
-#### Currency 콘솔 명령어 추가 (미커밋)
-- **`WjWorldPlayerControllerBase`에 Currency_* Exec 명령어 8개 추가** — 기존 Cosmetic_* 패턴 동일
-  - `Currency_GrantCoin/GrantGem` — 로컬 재화 부여
-  - `Currency_SetCoin/SetGem` — 잔액 직접 설정
-  - `Currency_Print` — 잔액 로그 출력
-  - `Currency_Refresh` — Steam 잔액 갱신
-  - `Currency_BuyGemPack` — Gem 팩 구매 테스트
-  - `Currency_SimulateReward` — 매치 보상 시뮬레이션 (0=패배, 1=승리)
-- **`WjWorldCurrencySubsystem`에 `SetCurrencyLocally()` public 래퍼 추가** — private SetBalance 위임, DevelopmentOnly 메타
-- 상태 변경 명령어는 함수 본문 내부 `#if !UE_BUILD_SHIPPING` 가드 (UHT 제약으로 선언부 가드 불가)
-
-### 학습/메모
-- UE TMap은 리플리케이션 미지원 → 컴포넌트에 UPROPERTY 제거하거나 USTRUCT 멤버에서 NotReplicated 사용
-- Steam Inventory playtimegenerator의 drop_interval/drop_window/drop_max_per_window로 일일 보상 상한 제어
-- ExchangeItems로 재화 소비 + 코스메틱 교환 원자적 처리 가능
-- **UHT는 `#if !UE_BUILD_SHIPPING` 내부의 `UFUNCTION` 선언을 허용하지 않음** — `WITH_EDITORONLY_DATA`만 예외. 가드는 함수 본문 내부에서 처리해야 함
-
-### 이슈/해결
-- **NotReplicated UHT 에러**: UActorComponent UPROPERTY에 NotReplicated 지정 시 "Only Struct members can be marked NotReplicated" 에러 → UPROPERTY 자체를 제거하여 해결
-- **UFUNCTION 전처리기 가드 에러**: `UFUNCTION(Exec)`를 `#if !UE_BUILD_SHIPPING` 안에 넣으면 UHT 에러 → 선언은 가드 밖에, 구현 본문 내부에서 가드 처리로 해결
-
----
-
-## 2026-02-12
-### 작업 내용 - JumpMap 배치 모드 개선 (CustomProperties + 검증 + 유저 레이아웃 선택)
-
-#### JumpMap 배치 에디터 CustomProperties + CSV 11번째 컬럼 (미커밋)
-- **`FPlacedObjectSaveEntry`에 `TMap<FString, FString> CustomProperties` 필드 추가**
-  - UPROPERTY Serialization으로 자동 처리, 빈 맵은 기존 세이브와 하위 호환
-- **ConfirmPlacement에서 Checkpoint 배치 시 자동 CheckpointOrder 할당**
-  - 기존 배치된 체크포인트의 최대 Order를 조회 후 +1 자동 부여
-- **ExportJumpMapLayoutAsCSV에 11번째 Properties 컬럼 추가**
-  - `Key=Value|Key=Value` 형식으로 CustomProperties 직렬화 (JumpMapLayoutDataAsset ParseLayoutCSV와 호환)
-- **TickComponent에서 배치된 체크포인트 위에 `CP #N` 3D 텍스트 표시**
-  - DrawDebugString으로 노란색 텍스트, JumpMap 컨텍스트에서만 렌더링
 
 ---
 *마지막 동기화: 2026-02-23*
