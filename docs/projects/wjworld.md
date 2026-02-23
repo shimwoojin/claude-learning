@@ -99,6 +99,9 @@ Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기
 - Steam 정식 출시 준비
 - 보물상자 BP 작업 필요: PlaceableObjectDataAsset에 ObjectId 등록, ActorClassOverride 설정, InteractAction/WidgetClass 에디터 설정
 
+## 출시 전 체크리스트
+- `Steam/itemdefs.json`: 보물상자(Treasure Chest #0~#9) `drop_max_per_window`를 `100` → `1`로 되돌리기 (현재 테스트용 100)
+
 ## 잔존 버그
 - (현재 없음)
 
@@ -236,5 +239,5 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
   - DrawDebugString으로 노란색 텍스트, JumpMap 컨텍스트에서만 렌더링
 
 ---
-*마지막 동기화: 2026-02-19*
+*마지막 동기화: 2026-02-23*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
