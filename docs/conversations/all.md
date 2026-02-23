@@ -6,6 +6,7 @@ Claude Code와의 모든 대화 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-23 | WjWorld | [Steam ExchangeItems 구현 + 보물상자 버그 수정 + 테스트 치트](./2026-02-23-wjworld-steam-exchange-treasure-cheats.md) | #SteamInventory #ExchangeItems #TreasureChest #GConfig #bugfix #DebugTools #itemdefs |
 | 2026-02-19 | WjWorld | [보물상자 Steam 보안 강화 + 코스메틱 버그 수정](./2026-02-19-wjworld-treasure-chest-steam-cosmetic-fixes.md) | #TreasureChest #SteamInventory #Cosmetic #bugfix #Security #GConfig #FDateTime |
 | 2026-02-13 | WjWorld | [Currency 디버그 콘솔 명령어 구현](./2026-02-13-wjworld-currency-console-commands.md) | #Currency #ConsoleCommand #UHT #DebugTools #UE5 |
 | 2026-02-13 | WjWorld | [재화 시스템 구현 + JumpMap 버그 수정 모음](./2026-02-13-wjworld-currency-system-jumpmap-fixes.md) | #Currency #SteamInventory #JumpMap #bugfix #Replication #InputMode #GameRule #EditorSubsystem |
