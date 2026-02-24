@@ -38,10 +38,13 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트 지원.
 - **구매 시스템 (Lobby 전용)**: `FPlaceableObjectDefinition.CoinPrice/SteamItemDefId/MaxPlacementCount`, `DeveloperSettings.MaxTotalLobbyPlacedObjects`
   - **소유권**: `CosmeticSubsystem.GetItemQuantityByDefId()` (AllItemQuantities 캐시)
   - **구매**: `CurrencySubsystem.PurchasePlacementObject()` → Steam ExchangeItems / 비Steam GConfig
-  - **제한**: SelectObject() 소유권 게이트, ConfirmPlacement()+GameStateLobby 서버 측 수량 검증
-  - **UI**: PopulateCatalog()에서 소유/가격/수량 표시, 미소유 클릭→구매
+  - **구매 수량 = 설치 상한**: 1회 구매 = 1개 설치 권한, `MaxPlacementCount`는 구매 상한 (무료 아이템은 `MaxPlacementCount`가 설치 상한)
+  - **제한**: SelectObject() 소유권 게이트, ConfirmPlacement() 유료→OwnedQty/무료→MaxPlacementCount 검증, GameStateLobby 서버 측 수량 검증
+  - **UI**: PopulateCatalog()에서 유료 `[배치수/OwnedQty]`/무료 `[배치수/MaxPlacementCount]` 표시, 구매 버튼은 `OwnedQty < MaxPlacementCount`일 때 표시
+  - **전체 삭제**: ClearButton → ConfirmDialogWidget 확인 → `ClearAllPlacedObjects()` (DataProvider.ClearPlacedObjects + SaveLayout)
   - **비Steam 폴백**: GConfig `[PlacementInventory]` 섹션
   - **테스트**: `Placement_Buy`, `Placement_PrintInventory`, `Placement_GrantItem` 콘솔 명령어
+- **공용 ConfirmDialogWidget**: `UI/Common/` — ShowPopup/ClosePopup + OnConfirmed/OnCancelled 델리게이트, NativeConstruct 전 호출 캐시 패턴
 
 ### Approaching Wall 미니게임
 벽이 다가오며 안전 구역으로 이동하는 PvP. BrickSpawner(비동기 8개/틱) → BrickMovement(단일 방향 선택) → WallManager(레벨별 속도). 12초마다 레벨업, Flood Fill 안전 구역 축소, TileActor 폭탄 신호.
@@ -83,6 +86,7 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **네트워킹**: Steam=SteamNetDriver, LAN=WjWorldLanNetDriver(`PLATFORM_SOCKETSUBSYSTEM` 명시)
 - **Config**: DriverClassName `/Script/ModuleName.ClassName` 정규 경로 필수
 - **LAN 소켓 충돌**: SocketSubsystemSteamIP가 기본 소켓 오버라이드 → WjWorldLanNetDriver로 해결
+- **코스메틱 DefId 넘버링**: Head 2000~2199, Body 2200~2399, Back 2400~2599, Effect 2600~2799 (200 간격)
 
 ### 재화 시스템
 `UWjWorldCurrencySubsystem` — Coin/Gem 재화 관리. Steam Inventory 기반 + 비Steam GConfig 폴백.
@@ -115,8 +119,7 @@ Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기
 
 ## 진행 중 / 미구현
 - Steam 정식 출시 준비
-- 보물상자 BP 작업 필요: PlaceableObjectDataAsset에 ObjectId 등록, ActorClassOverride 설정, InteractAction/WidgetClass 에디터 설정
-- 배치 오브젝트 에디터 설정 필요: DataAsset에서 각 오브젝트의 CoinPrice/SteamItemDefId/MaxPlacementCount 입력, BP 위젯에 TotalPlacementCountText 바인딩
+- Lobby/WaitingRoom 점프 검증 필요: Play에서 GA_Jump 정상 동작 확인, AW SpawnBrickPreview 중 점프 차단 확인
 
 ## 출시 전 체크리스트
 - `Steam/itemdefs.json`: 보물상자(Treasure Chest #0~#9) `drop_max_per_window`를 `100` → `1`로 되돌리기 (현재 테스트용 100)
@@ -158,6 +161,75 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 
 # WjWorld 개발 로그
 
+## 2026-02-23 (5)
+### 작업 내용
+
+#### Lobby/WaitingRoom 네이티브 점프 추가
+- **배경** — Lobby/WaitingRoom에서 점프 불가. 점프는 GA_Jump(GAS 어빌리티)로만 존재하며 GAS는 Play 전용
+- **방식** — GAS 도입 없이 CharacterBase에 네이티브 점프 바인딩 추가. 기존 auto-binding 시스템 활용
+- **CharacterBase** — `Jump_Started()`, `Jump_Completed()` UFUNCTION 추가 → `IA_Jump` InputAction에 자동 바인딩. `CanNativeJump()` 가드 (기본 true)
+- **CharacterPlay** — `CanNativeJump()` override → false 반환. 기존 GAS GA_Jump 경로 유지
+- **BP 작업** — `IA_Jump` InputAction 생성, `IMC_Default`에 Space 키 바인딩 추가
+- **키 충돌 해결** — Space는 `IA_Ability7`(GA_Jump)과 `IA_Jump`(네이티브) 모두 발동. Lobby에서는 GAS 미등록이라 네이티브만 동작, Play에서는 `CanNativeJump()=false`로 네이티브 차단
+
+### 변경 파일
+- `Core/Base/WjWorldCharacterBase.h/.cpp` — Jump_Started, Jump_Completed, CanNativeJump
+- `Core/Play/WjWorldCharacterPlay.h/.cpp` — CanNativeJump override (false)
+- `Content/Core/Input/InputAction/IA_Jump.uasset` (신규)
+- `Content/Core/Input/IMC_Default.uasset`
+
+### 학습/메모
+- 기존 auto-binding 시스템(`SetupInputBindings`)이 IMC의 `IA_Jump` → `Jump_Started`/`Jump_Completed` 함수명 매칭을 자동 처리
+- GAS를 비Play 컨텍스트에 도입하는 것보다 `CanNativeJump()` 가드 패턴이 훨씬 간결
+
+---
+
+## 2026-02-23 (4)
+### 작업 내용
+
+#### 코스메틱 아이템 DefId 카테고리별 재넘버링
+- **넘버링 규칙** — 카테고리별 200 간격: Head 2000+, Body 2200+, Back 2400+, Effect 2600+
+- **Military Hat** — 100→2000, 개별 `exchange: "1000x500"` 추가
+- **Fedora Hat** — 신규 아이템 2001 (Head, 500코인)
+- **Delivery Bag** — 120→2400, 기존 exchange 유지
+- **Hat Bundle 삭제** — 140번 번들 제거 (불필요)
+- 기존 100번대 코스메틱 DefId 전체 폐기
+
+### 변경 파일
+- `Steam/itemdefs.json`
+
+### 학습/메모
+- Steam itemdefs에서 `type: "bundle"`은 자동 언팩되는 묶음이라 개별 아이템으로 관리하는 게 맞음
+- DefId 넘버링은 카테고리별 충분한 간격을 두면 향후 확장이 편리
+
+---
+
+## 2026-02-23 (3)
+### 작업 내용
+
+#### 공용 확인 다이얼로그 + Placement Clear 기능
+- **ConfirmDialogWidget 신규** — `UI/Common/ConfirmDialogWidget.h/.cpp` 공용 확인/취소 팝업. `SetMessage()`, `SetButtonLabels()`, `OnConfirmed`/`OnCancelled` 델리게이트. NativeConstruct 전 호출 대비 캐시 패턴 적용
+- **ClearAllPlacedObjects()** — `PlacementComponent`에 전체 삭제 함수 추가. DataProvider.ClearPlacedObjects() → RefreshVisuals → SaveLayout → OnObjectDeleted 브로드캐스트
+- **PlacementHUD Clear 버튼** — `ClearButton`(BindWidgetOptional) + `ConfirmDialogClass`(EditDefaultsOnly) 추가. 클릭 → 확인 다이얼로그 → 전체 삭제. AW/JumpMap 에디터에는 버튼 없어도 정상 동작
+
+#### 구매 수량 = 설치 상한 로직 수정
+- **기존 문제** — 1회 구매로 MaxPlacementCount(5)만큼 무제한 설치 가능
+- **수정 후** — 1회 구매 = 1개 설치 권한. 5회 구매(250 Coin) = 5개 설치 권한
+- **PopulateCatalog UI** — 유료 아이템: `[배치수/OwnedQty]` 표시, 구매 버튼은 `OwnedQty < MaxPlacementCount`일 때 표시 (추가 구매 가능)
+- **ConfirmPlacement 제한** — 유료 아이템: `OwnedQty`로 배치 제한, 무료 아이템: `MaxPlacementCount` 유지
+
+### 변경 파일
+- `UI/Common/ConfirmDialogWidget.h/.cpp` (신규)
+- `GamePlay/Placement/WjWorldPlacementComponent.h/.cpp`
+- `UI/Placement/PlacementHUDWidgetBase.h/.cpp`
+
+### 학습/메모
+- `MaxPlacementCount`의 역할이 "설치 상한"에서 "구매 상한"으로 의미 변경됨. 유료 아이템의 실제 설치 상한은 `OwnedQty`(구매 수량)
+- 무료 아이템은 기존과 동일하게 `MaxPlacementCount`가 설치 상한
+- BindWidgetOptional로 선언하면 컨텍스트별 BP에서 위젯이 없어도 크래시 없이 동작
+
+---
+
 ## 2026-02-23 (2)
 ### 작업 내용
 
@@ -187,76 +259,7 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - `TotalPlacementCountText`는 BP 위젯에 바인딩 필요 (BindWidgetOptional이라 없어도 동작)
 - DataAsset에서 실제 오브젝트의 CoinPrice/SteamItemDefId/MaxPlacementCount 설정은 에디터에서 수동 입력 필요
 
----
-
-## 2026-02-23
-### 작업 내용
-
-#### Steam ExchangeItems 실제 구현 (CurrencySubsystem)
-- **PurchaseItemWithCurrency() Steam 분기 교체** — stub(로컬 차감+GrantItemLocally)를 실제 `ISteamInventory::ExchangeItems()` 호출로 교체
-- **RefreshBalancesFromInventory() 리팩터** — `GetItemQuantityFromInventory()` 2회 호출 → 단일 `GetAllItems` 패스로 잔액 + `SteamItemInstanceID_t` 동시 캐싱
-- **인스턴스 ID 캐시 추가** — `CachedCoinInstanceId`, `CachedGemInstanceId` (`ExchangeItems`에 필수)
-- **Deinitialize()** — 인스턴스 ID 리셋 추가
-
-#### 보물상자 쿨타임/보상 버그 수정
-- **GConfig 세션간 영속성 수정** — 커스텀 ini 파일 → `GGameUserSettingsIni`로 통일 (TreasureChest, Currency, Cosmetic 3곳)
-- **인메모리 캐시 추가** — `FDateTime CachedLastOpenedTime`으로 GConfig read-back 불안정 해결, F키 스팸 방지
-- **itemdefs.json 보상 수량 수정** — `playtimegenerator`의 `bundle` 필드는 weight(확률)임을 발견, 중간 bundle 아이템(DefId 50,51,52) 추가로 Coin 50개 정상 지급
-- **drop_interval 수정** — 1440(24시간 플레이타임) → 1(1분)로 변경
-
-#### 테스트 치트 명령어 추가
-- `Steam_ConsumeAllItems` — 인벤토리 전체 초기화 (GetAllItems 순회 → ConsumeItem)
-- `Steam_ConsumeCurrency` — Coin/Gem만 소비
-- `TreasureChest_ClearCooldowns` — TActorIterator로 모든 보물상자 로컬 쿨타임 초기화
-- `TreasureChestActor::ResetCooldown()` — 캐시 초기화 + GConfig 키 삭제 + 비주얼 복원
-
-#### itemdefs.json 테스트 설정
-- 보물상자 `drop_max_per_window`: 1 → 100 (테스트용, 출시 전 1로 복원 필요)
-- CLAUDE.md에 출시 전 체크리스트 섹션 추가
-
-### 학습/메모
-- **Steam `playtimegenerator` bundle 필드**: `"1000x50"`에서 `x50`은 수량이 아니라 **weight(확률 가중치)**. 실제 수량 지급은 `type: "bundle"` 중간 아이템 필요
-- **Steam `drop_window`/`drop_max_per_window`**: 서버 측 rate limit으로 클라이언트/Web API로 초기화 불가. 테스트 시 `drop_max_per_window`를 높이는 것이 유일한 우회법
-- **GConfig 커스텀 ini**: `FPaths::GeneratedConfigDir() + "Custom.ini"`는 UE 재시작 시 자동 로드 안됨. `GGameUserSettingsIni`가 cross-session 안정적
-- **Steam Web API vs Client API**: `IInventoryService/ConsumeItem` Web API는 Publisher Key 필요 (보안 위험). 클라이언트 `ISteamInventory::ConsumeItem`으로 동일 결과 가능
-- **Steam `StartPurchase`**: `price` 필드가 있는 아이템에 대해 Steam 오버레이 결제 UI 팝업 → 실결제 진행
-
-### 이슈/해결
-- **Coin 1개만 지급**: playtimegenerator bundle의 weight/quantity 혼동 → 중간 bundle 아이템으로 해결
-- **쿨타임 미저장 (세션간)**: 커스텀 ini 미로드 → GGameUserSettingsIni로 전환
-- **쿨타임 미동작 (세션내)**: GConfig read-back 불안정 → FDateTime 인메모리 캐시로 해결
-- **ExchangeItems stub**: 로컬 차감만 하고 서버 미반영 → 인스턴스 ID 캐싱 + 실제 API 호출로 교체
 
 ---
-
-## 2026-02-19
-### 작업 내용 - 보물상자 로비 배치 오브젝트 구현
-
-#### 배치 시스템 확장 — ActorClassOverride
-- **`WjWorldPlaceableObjectDataAsset.h`** — `FPlaceableObjectDefinition`에 `TSubclassOf<AWjWorldPlacedObjectActor> ActorClassOverride` 필드 추가
-- **`WjWorldGameStateLobby.cpp`** — `RespawnAllPlacedObjects()`에서 `ActorClassOverride` 설정 시 해당 클래스로 스폰, 미설정 시 기본 `AWjWorldPlacedObjectActor` 사용 (하위 호환)
-- 향후 자판기, NPC 등 상호작용 배치 오브젝트 확장에 동일 패턴 적용 가능
-
-#### TreasureChestActor 신규 구현
-- **`GamePlay/TreasureChest/WjWorldTreasureChestActor.h/.cpp` 생성** — `AWjWorldPlacedObjectActor` 서브클래스
-  - **상호작용**: BoxComponent 오버랩 → EnableInput + EnhancedInput BindAction(F키) → OnInteract
-  - **보상**: `CurrencySubsystem->GrantCurrencyLocally(Coin, RewardAmount)` 호출
-  - **쿨타임**: per-player GConfig 저장 (`TreasureChestCooldown.ini`), 위치 해시 키 (`Chest_X_Y_Z`), `FDateTime::UtcNow` ISO8601 저장
-  - **비주얼**: DMI 어두운 회색 틴트 (쿨타임 중), InteractionWidget UI 프롬프트
-  - **뚜껑 메시**: `LidMeshComponent` 추가 (`RelativeLocation(0,-60,-60)`), Roll 회전 애니메이션 (0 → -120도)
-  - **애니메이션**: Tick 기반 보간 (200도/초), 완료 시 Tick 자동 비활성화, `BeginPlay`에서 쿨타임 상태 따라 즉시 열림/닫힘
-
-#### DeveloperSettings 확장
-- **`WjWorldDeveloperSettings.h`** — TreasureChest 카테고리 추가
-  - `TreasureChestCoinReward` (기본 50), `TreasureChestCooldownSeconds` (기본 86400초=24시간)
-  - `TreasureChestInteractAction` (F키 InputAction), `TreasureChestWidgetClass` (상호작용 UI)
-
-#### CLAUDE.md 갱신
-- 폴더 구조에 `TreasureChest/` 추가, 클래스 계층에 `PlacedObject → TreasureChestActor` 추가
-- 보물상자 시스템 섹션 신규 작성, DeveloperSettings 설명 갱신
-- 진행 중/미구현에 BP 작업 필요 항목 추가
-
-
----
-*마지막 동기화: 2026-02-23*
+*마지막 동기화: 2026-02-24*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
