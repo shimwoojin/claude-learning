@@ -80,6 +80,10 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 
 ### 세션 관리
 `USessionManager` — Steam OSS 우선 → NULL 폴백. LAN/Steam 모드 분기, 검색 큐, 호스트 마이그레이션.
+- **비밀번호 방**: `CreateSession()`에서 PASSWORD 커스텀 설정 저장, `GetSessionPassword()`로 검색 결과에서 추출
+- **비밀번호 검증 흐름**: RoomListEntryWidget → `bIsPrivate` 확인 → PasswordInputWidget 팝업 → RoomListWindow.JoinRoomWithPassword() → 클라이언트 사전 검증 → JoinSession
+- **PasswordInputWidget**: `UI/Session/` — ShowPopup/ClosePopup 패턴, Enter키 제출, 에러 메시지 표시
+- **[Private] 표시**: RoomListEntryWidget에서 비공개 방 이름 앞에 `[Private]` 접두사
 
 ### Steam 설정
 - **AppID**: 4399350, `WITH_STEAM` 매크로 (Win64), `Steam/itemdefs.json`
@@ -107,6 +111,15 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **ActorClassOverride**: `FPlaceableObjectDefinition`에 스폰 클래스 분기 필드 → GameStateLobby에서 사용
 - **DeveloperSettings**: `TreasureChest` 카테고리 (CoinReward, CooldownSeconds, InteractAction, WidgetClass, GeneratorStartDefId)
 - **테스트**: `TreasureChest_ClearCooldowns` 콘솔 명령어
+
+### 설정 시스템
+`USettingsWidget` — 로비/대기실 설정 팝업. ShowPopup/ClosePopup 패턴.
+- **그래픽 품질**: `UGameUserSettings::SetOverallScalabilityLevel()` (Low/Medium/High/Epic), `SaveSettings()` 영속
+- **마스터 볼륨**: `GConfig` (`GGameUserSettingsIni`, `[WjWorldSettings]` 섹션, `MasterVolume` 키)
+- **볼륨 적용**: `FAudioDeviceHandle::SetTransientPrimaryVolume()` — static `ApplySavedMasterVolume()`
+- **즉시 적용**: Apply 버튼 없이 변경 시 바로 반영
+- **시작 시 복원**: `GameInstance::Init()` → `ApplySavedMasterVolume()`
+- **HUD 연동**: LobbyHUDWidget, WaitingRoomHUDWidget에서 `SettingsWidgetClass`/`SettingsWidgetInstance` 관리
 
 ### WjWorldDeveloperSettings
 Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기본값, 미니게임 에셋, 배치 카탈로그, 카메라 InputAction, 보물상자 설정.
@@ -160,6 +173,45 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 ## 최근 개발 로그
 
 # WjWorld 개발 로그
+
+## 2026-02-25
+### 작업 내용
+
+#### 설정 UI 구현 (디스플레이 품질 + 마스터 볼륨)
+- **SettingsWidget 신규** — `UI/Setting/SettingsWidget.h/.cpp` 생성
+  - `UWjWorldUserWidgetBase` 상속, ShowPopup/ClosePopup 패턴
+  - `GraphicsQualityComboBox` (Low/Medium/High/Epic) → `UGameUserSettings::SetOverallScalabilityLevel()` + `SaveSettings()`
+  - `MasterVolumeSlider` (0.0~1.0) + `VolumePercentText` ("80%" 등)
+  - 즉시 적용 패턴 (Apply 버튼 없음) — 슬라이더/콤보박스 변경 시 바로 반영
+- **볼륨 영속** — `GConfig` (`GGameUserSettingsIni`, `[WjWorldSettings]` 섹션, `MasterVolume` 키)
+- **볼륨 적용** — `static ApplySavedMasterVolume()` → `FAudioDeviceHandle::SetTransientPrimaryVolume()`
+- **GameInstance::Init()** — 게임 시작 시 저장된 마스터 볼륨 자동 복원
+- **LobbyHUDWidget** — `SettingsWidgetClass`/`SettingsWidgetInstance` 추가, `OnSettingsClicked()` 기존 품질 사이클링 코드 제거 → 설정 팝업 연동
+- **WaitingRoomHUDWidget** — `SettingsButton` (BindWidgetOptional), `SettingsWidgetClass`/`SettingsWidgetInstance`, `OnSettingsClicked()` 추가
+- **BP 작업** — `WBP_SettingsWidget` 위젯 블루프린트 생성, LobbyHUD/WaitingRoomHUD에 SettingsWidgetClass 설정
+
+#### 코스메틱 구매 중복 방지 + Steam_GrantCoin 치트
+- **CosmeticMainWindow** — ExchangePending 중 구매 버튼 중복 클릭 방지
+- **CurrencySubsystem** — `IsExchangePending()` BlueprintCallable API 추가
+- **PlayerControllerBase** — `Steam_GrantCoin` 콘솔 명령어 (GenerateItems)
+
+### 변경 파일
+- `UI/Setting/SettingsWidget.h/.cpp` (신규)
+- `UI/Lobby/LobbyHUDWidget.h/.cpp`
+- `UI/WaitingRoom/WaitingRoomHUDWidget.h/.cpp`
+- `Core/WjWorldGameInstance.cpp`
+- `Content/UI/Blueprint/Setting/WBP_SettingsWidget.uasset` (신규)
+- `Content/UI/Blueprint/Lobby/WBP_LobbyHUDWidget.uasset`
+- `Content/UI/Blueprint/WaitingRoom/BP_WaitingRoomHUDWidget.uasset`
+- 기타 다수 (GA_Grapple, GameStatePlay, PlayerControllerPlay, GameRule 등)
+
+### 학습/메모
+- `FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice()` → `SetTransientPrimaryVolume()` 로 마스터 볼륨 제어 가능
+- `GConfig->SetFloat()` + `GConfig->Flush(false, GGameUserSettingsIni)` 로 즉시 영속 저장
+- 설정 UI처럼 단순한 경우 Subsystem 불필요 — 위젯에서 직접 UGameUserSettings/GConfig 접근이 간결
+- ShowPopup에서 `FInputModeGameAndUI` 사용 (UIOnly 대신) — Lobby/WaitingRoom은 이미 GameAndUI 모드
+
+---
 
 ## 2026-02-23 (5)
 ### 작업 내용
@@ -220,46 +272,7 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 
 ### 변경 파일
 - `UI/Common/ConfirmDialogWidget.h/.cpp` (신규)
-- `GamePlay/Placement/WjWorldPlacementComponent.h/.cpp`
-- `UI/Placement/PlacementHUDWidgetBase.h/.cpp`
-
-### 학습/메모
-- `MaxPlacementCount`의 역할이 "설치 상한"에서 "구매 상한"으로 의미 변경됨. 유료 아이템의 실제 설치 상한은 `OwnedQty`(구매 수량)
-- 무료 아이템은 기존과 동일하게 `MaxPlacementCount`가 설치 상한
-- BindWidgetOptional로 선언하면 컨텍스트별 BP에서 위젯이 없어도 크래시 없이 동작
 
 ---
-
-## 2026-02-23 (2)
-### 작업 내용
-
-#### 로비 배치 오브젝트 구매 시스템 구현
-- **데이터 모델 확장** — `FPlaceableObjectDefinition`에 `CoinPrice`, `SteamItemDefId`, `MaxPlacementCount` 추가. `DeveloperSettings`에 `MaxTotalLobbyPlacedObjects` 추가
-- **소유권 추적** — `CosmeticSubsystem`의 `ParseInventoryResult()`에서 전체 DefId별 수량 캐시(`AllItemQuantities`) 추가. `GetItemQuantityByDefId()` API 추가
-- **구매 흐름** — `CurrencySubsystem::PurchasePlacementObject()` 추가. 기존 `ExchangeItems` 인프라 공유, `bPendingIsPlacement` 분기로 `OnPlacementPurchaseComplete`/`OnCurrencyPurchaseComplete` 분리
-- **배치 제한** — `PlacementComponent::SelectObject()`에 소유권 게이트, `ConfirmPlacement()`에 종류당/전체 수량 게이트 추가. `GameStateLobby::AddPlacedObject()`에 서버 측 동일 검증 추가
-- **UI 갱신** — `PlacementHUDWidgetBase::PopulateCatalog()`에서 소유/미소유/가격/수량 표시. 미소유 클릭 시 구매 시도. `OnObjectPlaced`/`OnObjectDeleted`/`OnPlacementPurchaseComplete`/`OnInventoryUpdated` 구독으로 자동 리프레시
-- **비Steam 폴백** — GConfig `[PlacementInventory]` 섹션에 `ObjectId=Quantity` 저장/로드. `LoadPlacementInventoryFromLocal()`로 초기화 시 `AllItemQuantities` 복원
-- **Steam itemdefs** — DefId 200~202 (Chair, Table, Lamp) 배치 오브젝트 아이템 등록, `exchange: "1000x{가격}"`
-- **테스트 치트** — `Placement_Buy <ObjectId>`, `Placement_PrintInventory`, `Placement_GrantItem <ObjectId> [Qty]` 콘솔 명령어
-
-### 변경 파일
-- `DataAsset/WjWorldPlaceableObjectDataAsset.h`
-- `Setting/WjWorldDeveloperSettings.h`
-- `Cosmetic/WjWorldCosmeticSubsystem.h/.cpp`
-- `Currency/WjWorldCurrencySubsystem.h/.cpp`
-- `GamePlay/Placement/WjWorldPlacementComponent.h/.cpp`
-- `Core/Local/Lobby/WjWorldGameStateLobby.cpp`
-- `UI/Placement/PlacementHUDWidgetBase.h/.cpp`
-- `Core/Base/WjWorldPlayerControllerBase.h/.cpp`
-- `Steam/itemdefs.json`
-
-### 참고
-- Lobby 컨텍스트만 구매/소유권 적용. AW/JumpMap은 기존대로 자유 배치
-- `TotalPlacementCountText`는 BP 위젯에 바인딩 필요 (BindWidgetOptional이라 없어도 동작)
-- DataAsset에서 실제 오브젝트의 CoinPrice/SteamItemDefId/MaxPlacementCount 설정은 에디터에서 수동 입력 필요
-
-
----
-*마지막 동기화: 2026-02-24*
+*마지막 동기화: 2026-02-25*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
