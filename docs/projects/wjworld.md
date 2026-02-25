@@ -243,6 +243,37 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - **PlayerProfileWidget** — LAN/NULL 환경에서 UniqueId 미유효 시 "Stats unavailable" 표시
 - **메모 정리** — 12개 항목 검토, 완료 7건 / 추가 논의 6건 분류
 
+#### 채팅 시스템 구현
+- **RPC 파이프라인** — PC `SendChatMessage()` → Server RPC (`ServerSendChatMessage`) → GameState `MulticastReceiveChatMessage()` (NetMulticast) → `OnChatMessageReceived` 델리게이트 → ChatWidget UI
+- **GameStateBase** — `FOnChatMessageReceived` 동적 멀티캐스트 델리게이트 + `MulticastReceiveChatMessage` NetMulticast RPC 추가
+- **PlayerControllerBase** — `SendChatMessage()` (BlueprintCallable, 200자 제한) + `ServerSendChatMessage()` (Server, Reliable)
+- **ChatWidget 신규** — `UI/Chat/ChatWidget.h/.cpp` 생성
+  - `ChatScrollBox` (메시지 목록) + `ChatInputBox` (입력) BindWidget
+  - Enter키 전송 (`OnTextCommitted` ETextCommit::OnEnter)
+  - `AddChatMessage()`: TextBlock 동적 생성, ScrollBox 추가, 자동 스크롤, 50개 메시지 상한
+- **HUDBase 연동** — DeveloperSettings `ChatWidgetClass` TSoftClassPtr → BeginPlay에서 CreateWidget + AddToViewport
+
+#### Coin 획득 알림 UI
+- **CoinGainNotificationWidget 신규** — `UI/HUD/CoinGainNotificationWidget.h/.cpp` 생성
+  - `OnCurrencyBalanceChanged` 구독, 이전 잔액 캐싱 → 차액 계산
+  - "+X Coin" 골드 텍스트 토스트, 3초 자동 숨김
+- **HUDBase 연동** — DeveloperSettings `CoinGainNotificationWidgetClass` → BeginPlay에서 생성
+- **Steam Inventory async 수정** — CurrencySubsystem이 CosmeticSubsystem의 `AllItemQuantities`/`AllItemInstanceIds` 캐시에서 읽도록 변경 (중복 async GetAllItems 호출 제거)
+
+#### 게임 종료 시 호스트 조기 퇴장 → 클라 프리즈 수정
+- **문제** — 게임 종료 후 ServerTravel 중 호스트가 나가면 클라가 30초 호스트 마이그레이션 타임아웃에 걸림
+- **bGameEndTraveling 플래그** — `WjWorldGameInstance`에 추가
+  - 서버: `EndGame()`에서 set
+  - 클라: `OnRep_GamePhase(Finished)`에서 set
+  - `HandleNetworkFailure`/`HandleTravelFailure`에서 체크 → 마이그레이션 스킵 → 즉시 로비 복귀
+  - `CreateRoom()`/`MigrationFailed()`에서 reset
+
+#### 호스트 마이그레이션 수정 (WaitingRoom)
+- **NetworkMode 버그** — 클라의 `SessionManager.LastRoomSettings`가 JoinSession 시 미설정 → LAN 기본값 → 마이그레이션 검색 모드 오류
+  - **수정**: `BeginHostMigration()`에서 `MigrationContext.CachedRoomSettings`로 `UpdateLastRoomSettings()` 동기화
+- **PlayerList 버그** — `CachePlayerList()` 서버 전용 호출 → 모든 클라가 자신을 새 호스트로 판단
+  - **수정**: `BeginHostMigration()`에서 `PlayerArray` fallback 빌드 + `OnRep_RoomSettings()`에서 `BroadcastPlayerListChanged()` 호출
+
 ### 변경 파일
 - `Config/DefaultEngine.ini` — PropagateAlpha 추가
 - `UI/Profile/CharacterPreviewActor.cpp` — 회전 복사 + 실시간 캡처
@@ -253,54 +284,23 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - `Core/Session/SessionManager.h/.cpp` — GetSessionPassword API
 - `AbilitySystem/Abilities/GA_Grapple.h/.cpp` — MaxPullDuration 타임아웃
 - `UI/WaitingRoom/WaitingRoomHUDWidget.h/.cpp` — StartGameStatusText
+- `Core/Base/WjWorldGameStateBase.h/.cpp` — 채팅 RPC + 델리게이트
+- `Core/Base/WjWorldPlayerControllerBase.h/.cpp` — SendChatMessage + ServerRPC
+- `Core/Base/WjWorldHUDBase.h/.cpp` — ChatWidget + CoinGainNotification 생성
+- `UI/Chat/ChatWidget.h/.cpp` (신규) — 채팅 위젯
+- `UI/HUD/CoinGainNotificationWidget.h/.cpp` (신규) — 코인 획득 알림
+- `Core/WjWorldGameInstance.h/.cpp` — bGameEndTraveling 플래그 + 마이그레이션 수정
+- `Core/Play/WjWorldGameStatePlay.cpp` — OnRep_GamePhase에서 MarkGameEndTraveling
+- `Core/Local/WaitingRoom/WjWorldGameStateWaitingRoom.cpp` — OnRep_RoomSettings PlayerList 동기화
+- `Setting/WjWorldDeveloperSettings.h` — ChatWidgetClass 추가
+- `Config/DefaultWjWorld.ini` — ChatWidgetClass 경로 추가
 - `Memo/260225.txt` — 완료/미완료 분류 정리
-- `CLAUDE.md` — 세션/설정/폴더 구조 문서 갱신
+- `CLAUDE.md` — 채팅/코인알림/폴더구조/패턴 문서 갱신
 
 ### 학습/메모
 - `FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice()` → `SetTransientPrimaryVolume()` 로 마스터 볼륨 제어 가능
 - `GConfig->SetFloat()` + `GConfig->Flush(false, GGameUserSettingsIni)` 로 즉시 영속 저장
 - 설정 UI처럼 단순한 경우 Subsystem 불필요 — 위젯에서 직접 UGameUserSettings/GConfig 접근이 간결
-- ShowPopup에서 `FInputModeGameAndUI` 사용 (UIOnly 대신) — Lobby/WaitingRoom은 이미 GameAndUI 모드
-- `r.PostProcessing.PropagateAlpha=1` — post-processing 파이프라인에서 alpha 채널 보존, 셰이더 재컴파일 1회 발생
-- SceneCapture에서 `bCaptureEveryFrame`은 메시 설정 완료 후 활성화해야 불필요 캡처 방지
-- 위젯 부모 탐색: `GetParent()` 루프 + `GetTypedOuter<T>()` 조합으로 ScrollBox 내부 위젯에서 부모 UserWidget 탐색
-
----
-
-## 2026-02-23 (5)
-### 작업 내용
-
-#### Lobby/WaitingRoom 네이티브 점프 추가
-- **배경** — Lobby/WaitingRoom에서 점프 불가. 점프는 GA_Jump(GAS 어빌리티)로만 존재하며 GAS는 Play 전용
-- **방식** — GAS 도입 없이 CharacterBase에 네이티브 점프 바인딩 추가. 기존 auto-binding 시스템 활용
-- **CharacterBase** — `Jump_Started()`, `Jump_Completed()` UFUNCTION 추가 → `IA_Jump` InputAction에 자동 바인딩. `CanNativeJump()` 가드 (기본 true)
-- **CharacterPlay** — `CanNativeJump()` override → false 반환. 기존 GAS GA_Jump 경로 유지
-- **BP 작업** — `IA_Jump` InputAction 생성, `IMC_Default`에 Space 키 바인딩 추가
-- **키 충돌 해결** — Space는 `IA_Ability7`(GA_Jump)과 `IA_Jump`(네이티브) 모두 발동. Lobby에서는 GAS 미등록이라 네이티브만 동작, Play에서는 `CanNativeJump()=false`로 네이티브 차단
-
-### 변경 파일
-- `Core/Base/WjWorldCharacterBase.h/.cpp` — Jump_Started, Jump_Completed, CanNativeJump
-- `Core/Play/WjWorldCharacterPlay.h/.cpp` — CanNativeJump override (false)
-- `Content/Core/Input/InputAction/IA_Jump.uasset` (신규)
-- `Content/Core/Input/IMC_Default.uasset`
-
-### 학습/메모
-- 기존 auto-binding 시스템(`SetupInputBindings`)이 IMC의 `IA_Jump` → `Jump_Started`/`Jump_Completed` 함수명 매칭을 자동 처리
-- GAS를 비Play 컨텍스트에 도입하는 것보다 `CanNativeJump()` 가드 패턴이 훨씬 간결
-
----
-
-## 2026-02-23 (4)
-### 작업 내용
-
-#### 코스메틱 아이템 DefId 카테고리별 재넘버링
-- **넘버링 규칙** — 카테고리별 200 간격: Head 2000+, Body 2200+, Back 2400+, Effect 2600+
-- **Military Hat** — 100→2000, 개별 `exchange: "1000x500"` 추가
-- **Fedora Hat** — 신규 아이템 2001 (Head, 500코인)
-- **Delivery Bag** — 120→2400, 기존 exchange 유지
-- **Hat Bundle 삭제** — 140번 번들 제거 (불필요)
-- 기존 100번대 코스메틱 DefId 전체 폐기
-
 
 ---
 *마지막 동기화: 2026-02-25*
