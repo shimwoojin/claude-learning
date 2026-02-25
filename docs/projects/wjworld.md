@@ -112,6 +112,15 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **DeveloperSettings**: `TreasureChest` 카테고리 (CoinReward, CooldownSeconds, InteractAction, WidgetClass, GeneratorStartDefId)
 - **테스트**: `TreasureChest_ClearCooldowns` 콘솔 명령어
 
+### 캐릭터 프리뷰 시스템
+`ACharacterPreviewActor` — 프로필/상점 UI용 3D 캐릭터 프리뷰. `UPlayerProfileWidget`, `UCosmeticPreviewPanel`에서 사용.
+- **메시 복사**: `SetupFromPawn()` — SkeletalMesh + AnimBlueprint + RelativeRotation 복사 (Yaw=-90 보정 포함)
+- **코스메틱 프리뷰**: `SetupPreview()` — 비동기 메시 로드 + Socket 부착 + ShowOnlyList
+- **SceneCapture**: `PRM_UseShowOnlyList` + `SCS_FinalColorLDR` + `ClearColor::Transparent`
+- **실시간 캡처**: `bCaptureEveryFrame = true` (SetupFromPawn 완료 후 활성화, Idle 모션 반영)
+- **투명 배경**: `r.PostProcessing.PropagateAlpha=1` (DefaultEngine.ini) — post-processing alpha 보존
+- **RenderTarget 적용**: `UImage::SetBrushResourceObject(RT)` 패턴
+
 ### 설정 시스템
 `USettingsWidget` — 로비/대기실 설정 팝업. ShowPopup/ClosePopup 패턴.
 - **그래픽 품질**: `UGameUserSettings::SetOverallScalabilityLevel()` (Low/Medium/High/Epic), `SaveSettings()` 영속
@@ -120,6 +129,20 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **즉시 적용**: Apply 버튼 없이 변경 시 바로 반영
 - **시작 시 복원**: `GameInstance::Init()` → `ApplySavedMasterVolume()`
 - **HUD 연동**: LobbyHUDWidget, WaitingRoomHUDWidget에서 `SettingsWidgetClass`/`SettingsWidgetInstance` 관리
+
+### 채팅 시스템
+`UChatWidget` — 멀티플레이어 채팅. HUDBase에서 생성, 모든 컨텍스트(Lobby, WaitingRoom, Play) 공용.
+- **RPC 흐름**: PlayerControllerBase.SendChatMessage() → Server RPC → GameStateBase.MulticastReceiveChatMessage() → OnChatMessageReceived 델리게이트
+- **위젯**: ScrollBox(메시지 목록) + EditableTextBox(입력), Enter 키 전송
+- **DeveloperSettings**: `ChatWidgetClass` (UI 카테고리)
+- **UMG Blueprint 필요**: `WBP_ChatWidget` 생성 필요 (ChatScrollBox, ChatInputBox BindWidget)
+
+### Coin 획득 알림 시스템
+`UCoinGainNotificationWidget` — "+X Coin" 토스트 표시. HUDBase에서 생성.
+- **구독**: OnCurrencyBalanceChanged 델리게이트 (CurrencySubsystem)
+- **표시**: 이전 잔액 캐시 → 델타 계산 → 양수면 금색 텍스트 3초 표시
+- **DeveloperSettings**: `CoinGainNotificationWidgetClass` (UI 카테고리)
+- **UMG Blueprint 필요**: `WBP_CoinGainNotification` 생성 필요 (NotificationText BindWidget)
 
 ### WjWorldDeveloperSettings
 Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기본값, 미니게임 에셋, 배치 카탈로그, 카메라 InputAction, 보물상자 설정.
@@ -132,7 +155,11 @@ Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기
 
 ## 진행 중 / 미구현
 - Steam 정식 출시 준비
-- Lobby/WaitingRoom 점프 검증 필요: Play에서 GA_Jump 정상 동작 확인, AW SpawnBrickPreview 중 점프 차단 확인
+- AW 벽 이동 알고리즘 재설계 필요: 현재 FloodFill 독립 방향 선택 → 벽돌 간 간격 발생, 목표 그리드 좌표 1:1 할당 방식으로 변경 검토
+- 솔로 컨텐츠 기획 필요: 봇 시스템, 솔로 모드, 또는 싱글 미니게임 추가
+- Skeletal mesh 코스메틱 확장: 코드 인프라 준비 완료, 에셋 제작 + itemdefs.json 등록 필요
+- 게임 진행 중 방 노출 + 중간 입장 처리: bAllowJoinInProgress/bInProgress 존재, UI 시각 구분 및 모드별 정책 미구현
+- UMG Blueprint 생성 필요: WBP_ChatWidget (ChatScrollBox, ChatInputBox), WBP_CoinGainNotification (NotificationText) + DeveloperSettings 설정
 
 ## 출시 전 체크리스트
 - `Steam/itemdefs.json`: 보물상자(Treasure Chest #0~#9) `drop_max_per_window`를 `100` → `1`로 되돌리기 (현재 테스트용 100)
@@ -144,6 +171,8 @@ Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기
 - Room 목록 스케일링 — 1000+ 방 표시 시 부하 체크
 - Sumo FloorRing 디자인 변경 검토 — 개별 타일 랜덤 파괴 전환 시 리플리케이션 비용
 - 에셋 커밋 전략 수립 — LFS 정책, 브랜치 전략, 에셋 전용 커밋 분리
+- BP_WaitingRoomHUDWidget에서 ProfileWidgetClass 설정 확인 — 3자 프로필이 안 보이는 문제 (코드 로직 정상)
+- JumpMap GrapplePoint 콜리전 확인 — SphereComponent가 NoCollision, MeshComponent 콜리전으로 라인트레이스 감지되는지 테스트 필요
 
 ## 코딩 컨벤션
 - 언리얼 엔진 코딩 표준 준수
@@ -195,21 +224,46 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - **CurrencySubsystem** — `IsExchangePending()` BlueprintCallable API 추가
 - **PlayerControllerBase** — `Steam_GrantCoin` 콘솔 명령어 (GenerateItems)
 
+#### 캐릭터 프리뷰 개선 (SceneCapture)
+- **투명 배경** — `DefaultEngine.ini`에 `r.PostProcessing.PropagateAlpha=1` 추가, `ClearColor::Transparent` + `SCS_FinalColorLDR` 조합으로 배경 투명화
+- **실시간 Idle 모션** — `SetupFromPawn()` 완료 후 `bCaptureEveryFrame = true` 활성화 (생성자에서는 false 유지)
+- **Yaw 수정** — `PreviewMeshComponent->SetRelativeRotation(SourceMesh->GetRelativeRotation())` 로 ACharacter Yaw=-90° 보정값 복사
+- **PlayerProfileWidget 간소화** — 0.5초 타이머 제거 → 즉시 `ApplyRenderTargetToImage()`, `SetBrushResourceObject(RT)` 패턴으로 통일
+
+#### 비밀번호 방 시스템
+- **SessionManager** — `CreateSession()`에서 `PASSWORD` 커스텀 설정 저장, `GetSessionPassword()` API 추가
+- **PasswordInputWidget 신규** — ShowPopup/ClosePopup 패턴, Enter키 제출, 에러 메시지 표시, `OnPasswordSubmitted`/`OnPasswordCancelled` 델리게이트
+- **RoomListEntryWidget** — `bIsPrivate` 확인 → 부모 `RoomListWindow::RequestJoinPrivateRoom()` 호출, `[Private]` 접두사 표시
+- **RoomListWindow** — `JoinRoomWithPassword()` 비밀번호 대조 → 불일치 시 에러, 일치 시 `JoinRoom()`
+
+#### 기타 개선
+- **RoomListWindow** — `ShowPopup()`에서 `#if WITH_STEAM` → Steam 기본 모드
+- **GA_Grapple** — `MaxPullDuration` (2초) 타임아웃 추가, 무한 풀 방지
+- **WaitingRoomHUD** — `StartGameStatusText` 추가 (인원 부족/준비 대기 사유 표시)
+- **PlayerProfileWidget** — LAN/NULL 환경에서 UniqueId 미유효 시 "Stats unavailable" 표시
+- **메모 정리** — 12개 항목 검토, 완료 7건 / 추가 논의 6건 분류
+
 ### 변경 파일
-- `UI/Setting/SettingsWidget.h/.cpp` (신규)
-- `UI/Lobby/LobbyHUDWidget.h/.cpp`
-- `UI/WaitingRoom/WaitingRoomHUDWidget.h/.cpp`
-- `Core/WjWorldGameInstance.cpp`
-- `Content/UI/Blueprint/Setting/WBP_SettingsWidget.uasset` (신규)
-- `Content/UI/Blueprint/Lobby/WBP_LobbyHUDWidget.uasset`
-- `Content/UI/Blueprint/WaitingRoom/BP_WaitingRoomHUDWidget.uasset`
-- 기타 다수 (GA_Grapple, GameStatePlay, PlayerControllerPlay, GameRule 등)
+- `Config/DefaultEngine.ini` — PropagateAlpha 추가
+- `UI/Profile/CharacterPreviewActor.cpp` — 회전 복사 + 실시간 캡처
+- `UI/Profile/PlayerProfileWidget.cpp` — 타이머 제거 + 브러시 간소화 + LAN 스탯 처리
+- `UI/Session/PasswordInputWidget.h/.cpp` (신규)
+- `UI/Session/RoomListEntryWidget.h/.cpp` — 비공개 방 표시 + 비밀번호 팝업 연동
+- `UI/Session/RoomListWindow.h/.cpp` — Steam 기본 모드 + 비밀번호 검증 흐름
+- `Core/Session/SessionManager.h/.cpp` — GetSessionPassword API
+- `AbilitySystem/Abilities/GA_Grapple.h/.cpp` — MaxPullDuration 타임아웃
+- `UI/WaitingRoom/WaitingRoomHUDWidget.h/.cpp` — StartGameStatusText
+- `Memo/260225.txt` — 완료/미완료 분류 정리
+- `CLAUDE.md` — 세션/설정/폴더 구조 문서 갱신
 
 ### 학습/메모
 - `FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice()` → `SetTransientPrimaryVolume()` 로 마스터 볼륨 제어 가능
 - `GConfig->SetFloat()` + `GConfig->Flush(false, GGameUserSettingsIni)` 로 즉시 영속 저장
 - 설정 UI처럼 단순한 경우 Subsystem 불필요 — 위젯에서 직접 UGameUserSettings/GConfig 접근이 간결
 - ShowPopup에서 `FInputModeGameAndUI` 사용 (UIOnly 대신) — Lobby/WaitingRoom은 이미 GameAndUI 모드
+- `r.PostProcessing.PropagateAlpha=1` — post-processing 파이프라인에서 alpha 채널 보존, 셰이더 재컴파일 1회 발생
+- SceneCapture에서 `bCaptureEveryFrame`은 메시 설정 완료 후 활성화해야 불필요 캡처 방지
+- 위젯 부모 탐색: `GetParent()` 루프 + `GetTypedOuter<T>()` 조합으로 ScrollBox 내부 위젯에서 부모 UserWidget 탐색
 
 ---
 
@@ -247,31 +301,6 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - **Hat Bundle 삭제** — 140번 번들 제거 (불필요)
 - 기존 100번대 코스메틱 DefId 전체 폐기
 
-### 변경 파일
-- `Steam/itemdefs.json`
-
-### 학습/메모
-- Steam itemdefs에서 `type: "bundle"`은 자동 언팩되는 묶음이라 개별 아이템으로 관리하는 게 맞음
-- DefId 넘버링은 카테고리별 충분한 간격을 두면 향후 확장이 편리
-
----
-
-## 2026-02-23 (3)
-### 작업 내용
-
-#### 공용 확인 다이얼로그 + Placement Clear 기능
-- **ConfirmDialogWidget 신규** — `UI/Common/ConfirmDialogWidget.h/.cpp` 공용 확인/취소 팝업. `SetMessage()`, `SetButtonLabels()`, `OnConfirmed`/`OnCancelled` 델리게이트. NativeConstruct 전 호출 대비 캐시 패턴 적용
-- **ClearAllPlacedObjects()** — `PlacementComponent`에 전체 삭제 함수 추가. DataProvider.ClearPlacedObjects() → RefreshVisuals → SaveLayout → OnObjectDeleted 브로드캐스트
-- **PlacementHUD Clear 버튼** — `ClearButton`(BindWidgetOptional) + `ConfirmDialogClass`(EditDefaultsOnly) 추가. 클릭 → 확인 다이얼로그 → 전체 삭제. AW/JumpMap 에디터에는 버튼 없어도 정상 동작
-
-#### 구매 수량 = 설치 상한 로직 수정
-- **기존 문제** — 1회 구매로 MaxPlacementCount(5)만큼 무제한 설치 가능
-- **수정 후** — 1회 구매 = 1개 설치 권한. 5회 구매(250 Coin) = 5개 설치 권한
-- **PopulateCatalog UI** — 유료 아이템: `[배치수/OwnedQty]` 표시, 구매 버튼은 `OwnedQty < MaxPlacementCount`일 때 표시 (추가 구매 가능)
-- **ConfirmPlacement 제한** — 유료 아이템: `OwnedQty`로 배치 제한, 무료 아이템: `MaxPlacementCount` 유지
-
-### 변경 파일
-- `UI/Common/ConfirmDialogWidget.h/.cpp` (신규)
 
 ---
 *마지막 동기화: 2026-02-25*
