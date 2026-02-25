@@ -23,12 +23,12 @@
 GameplayTag 기반 타입 세이프 데이터. `GameStatePlay`에 게임 데이터, `PlayerStatePlay`에 플레이어 데이터. 리플리케이션 지원.
 
 ### 미니게임 카탈로그
-`UWjWorldMinigameDataAsset` — `FWjWorldMinigameDefinition`(DisplayName, GameModeId, LevelPath, GameRuleClass, MapOptions, AllowedAbilityTags, StatNamespace). `GameModePlay::InitGame()`에서 URL Options 기반 동적 조회.
+`UWjWorldMinigameDataAsset` — `FWjWorldMinigameDefinition`(DisplayName, GameModeId, LevelPath, GameRuleClass, MapOptions, AllowedAbilityTags, StatNamespace, DefaultCameraMode). `GameModePlay::InitGame()`에서 URL Options 기반 동적 조회. `DefaultCameraMode`는 `GameRuleBase::OnGameReady()`에서 `GameStatePlay`에 리플리케이션.
 
 ### 다중 컨텍스트 배치 시스템
 Lobby / ApproachingWall / JumpMap 3개 컨텍스트 지원.
 - **EPlacementContext** 열거형, **IWjWorldPlacementDataProvider** GameState 인터페이스
-- **PlacementComponent**: 컨텍스트별 저장/로드/삭제, `ValidateJumpMapLayout()` 검증
+- **PlacementComponent**: 컨텍스트별 저장/로드/삭제, `ValidateJumpMapLayout()` 검증 (JumpMap 에디터 저장 시 검증 실패 → 차단)
 - **PreviewActor**: 유효/무효 색상, 비동기 메시 로드, 회전 축(Yaw/Pitch/Roll) 전환
 - **PlacedObjectActor**: ObjectId 저장, 삭제 하이라이트, `ActorClassOverride`로 서브클래스 스폰 분기
 - **LayoutSaveGame**: `FPlacedObjectSaveEntry.CustomProperties` (JumpMap CheckpointOrder 등)
@@ -54,18 +54,20 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트 지원.
 
 ### JumpMap 미니게임
 장애물 코스 타임어택. 시간 제한 120초, 체크포인트 리스폰, 완주 순서 추적.
-- **장애물**: KillZone, MovingPlatform, RotatingObstacle, PushWind, Checkpoint, End, GrapplePoint
+- **장애물**: KillZone, MovingPlatform(서버 시간 동기화), RotatingObstacle(서버 시간 동기화), PushWind, Checkpoint, End, GrapplePoint
+- **장애물 동기화**: `ServerElapsedTime` Replicated + `CalculatePositionFromTime()`/`CalculateRotationFromTime()` 순수 함수 → 클라/서버 동일 위치
 - **어빌리티**: GA_Dash(Shift), GA_Grapple(E), GA_DoubleJump
 - **CSV 레이아웃**: `JumpMapLayoutDataAsset` 내장+유저 로드, `#META:MapName:` 헤더, CustomProperties 11번째 컬럼
 - **액터 직렬화**: JumpMapActorBase의 JumpMapObjectId + Get/ApplySerializableProperties, 7개 서브클래스 구현
 - **에디터**: WjWorldEditor 모듈 — JumpMapLevelEditorSubsystem + SJumpMapLayoutPanel
 
 ### Gameplay Ability System
-`UWjWorldGameplayAbilityBase` — AbilityName/Icon UI 메타, 충전 인터페이스, AllowedAbilityTags 제한, GamePhase 체크.
-- **AW 어빌리티**: GA_NormalAttack(4방향), GA_SpawnBrick(충전+Preview), GA_LiftBrick(ServerRPC 패턴)
+`UWjWorldGameplayAbilityBase` — AbilityName/Icon UI 메타, 충전 인터페이스, AllowedAbilityTags 제한, GamePhase 체크. `State_Eliminated`/`State_Staggered` ActivationBlockedTags 공통.
+- **AW 어빌리티**: GA_NormalAttack(4방향 벽돌 + 플레이어 경직), GA_SpawnBrick(충전+Preview), GA_LiftBrick(ServerRPC 패턴)
+- **NormalAttack 경직**: 피격 플레이어에 `GE_NormalAttackStagger` 적용 (1초 Duration, `State.Staggered` 태그) → 이동+어빌리티 차단, 서버에서 DisableMovement + 타이머 복원
 - **Sumo 어빌리티**: GA_Push(넉백+SuperPush), GA_Jump(CharacterJump 패턴)
 - **JumpMap 어빌리티**: GA_Dash(LaunchCharacter), GA_Grapple(라인트레이스→당김), GA_DoubleJump(공중 1회)
-- **GameplayTag**: `State_*`, `Cooldown_*`, `Ability_*`, `Buff_*`, `GameplayCue_*` 접두사 패턴
+- **GameplayTag**: `State_*`(Eliminated, Staggered, SpawnBrickPreview, LiftBrickCarry), `Cooldown_*`, `Ability_*`, `Buff_*`, `GameplayCue_*` 접두사 패턴
 - **주요 패턴**: Preview+Confirm/Cancel, 클라이언트 그리드좌표→Server RPC (LocalPredicted 위치 불일치 해결)
 
 ### 코스메틱 시스템
@@ -95,7 +97,8 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 ### 재화 시스템
 `UWjWorldCurrencySubsystem` — Coin/Gem 재화 관리. Steam Inventory 기반 + 비Steam GConfig 폴백.
 - **잔액 조회**: `GetBalance()`, `GetAllBalances()` — Steam 환경에서 `GetAllItems` 단일 패스로 잔액 + 인스턴스 ID 동시 캐싱
-- **미니게임 보상**: `TriggerMatchReward()` → Steam `TriggerItemDrop` / 비Steam 로컬 부여
+- **미니게임 보상**: `TriggerMatchReward()` → Steam `TriggerItemDrop` (실패 시 로컬 폴백) + 2.5s/5s 인벤토리 갱신 재시도
+- **일일 보상 제한**: `TodayMatchRewardCount` + `LastRewardDate` GConfig 영속, `GetRemainingDailyRewards()`, `MaxDailyMatchRewards` (DeveloperSettings, 기본 10)
 - **코스메틱 구매**: `PurchaseItemWithCurrency()` → Steam `ExchangeItems` (캐시된 인스턴스 ID 사용) / 비Steam 로컬 차감
 - **유료 재화 팩**: `PurchaseGemPack()` → Steam `StartPurchase` → 오버레이 결제 UI
 - **폴링**: Exchange 결과 0.5초, Gem 구매 1초 주기 폴링 + 300초 타임아웃
@@ -105,7 +108,7 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 ### 보물상자 시스템
 `AWjWorldTreasureChestActor` — `AWjWorldPlacedObjectActor` 서브클래스. 로비 배치 상호작용 오브젝트.
 - **상호작용**: BoxComponent 오버랩 → EnableInput + EnhancedInput BindAction(F키) → OnInteract
-- **보상**: Steam `TriggerItemDrop`(ChestIndex별 독립 generator DefId 300~309) / 비Steam `GrantCurrencyLocally`
+- **보상**: Steam `TriggerItemDrop`(ChestIndex별 독립 generator DefId 300~309, 실패 시 로컬 폴백 + 2.5s/5s 재시도) / 비Steam `GrantCurrencyLocally`
 - **쿨타임**: `FDateTime CachedLastOpenedTime` 인메모리 캐시 + `GGameUserSettingsIni` 영속 저장, 위치 해시 키 (`Chest_X_Y_Z`)
 - **비주얼**: DMI 어두운 회색 틴트 (쿨타임 중), UI 프롬프트 (InteractionWidget), 뚜껑 Roll 애니메이션
 - **ActorClassOverride**: `FPlaceableObjectDefinition`에 스폰 클래스 분기 필드 → GameStateLobby에서 사용
@@ -116,9 +119,10 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 `ACharacterPreviewActor` — 프로필/상점 UI용 3D 캐릭터 프리뷰. `UPlayerProfileWidget`, `UCosmeticPreviewPanel`에서 사용.
 - **메시 복사**: `SetupFromPawn()` — SkeletalMesh + AnimBlueprint + RelativeRotation 복사 (Yaw=-90 보정 포함)
 - **코스메틱 프리뷰**: `SetupPreview()` — 비동기 메시 로드 + Socket 부착 + ShowOnlyList
-- **SceneCapture**: `PRM_UseShowOnlyList` + `SCS_FinalColorLDR` + `ClearColor::Transparent`
+- **SceneCapture**: `PRM_UseShowOnlyList` + `SCS_FinalToneCurveHDR` + `ClearColor::Transparent` + `bAlwaysPersistRenderingState = true`
 - **실시간 캡처**: `bCaptureEveryFrame = true` (SetupFromPawn 완료 후 활성화, Idle 모션 반영)
 - **투명 배경**: `r.PostProcessing.PropagateAlpha=1` (DefaultEngine.ini) — post-processing alpha 보존
+- **RenderTarget**: `RTF_RGBA16f` + `InitCustomFormat(W, H, PF_FloatRGBA, false)` — alpha 완전 보존
 - **RenderTarget 적용**: `UImage::SetBrushResourceObject(RT)` 패턴
 
 ### 설정 시스템
@@ -133,9 +137,19 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 ### 채팅 시스템
 `UChatWidget` — 멀티플레이어 채팅. HUDBase에서 생성, 모든 컨텍스트(Lobby, WaitingRoom, Play) 공용.
 - **RPC 흐름**: PlayerControllerBase.SendChatMessage() → Server RPC → GameStateBase.MulticastReceiveChatMessage() → OnChatMessageReceived 델리게이트
-- **위젯**: ScrollBox(메시지 목록) + EditableTextBox(입력), Enter 키 전송
+- **위젯**: ScrollBox(메시지 목록) + EditableTextBox(입력), Enter 키 전송, `IsChatInputFocused()` API
+- **글로벌 Enter 키**: PlayerControllerBase에서 Enter → `ChatWidget.FocusChatInput()` (이미 포커스 중이면 스킵)
 - **DeveloperSettings**: `ChatWidgetClass` (UI 카테고리)
 - **UMG Blueprint 필요**: `WBP_ChatWidget` 생성 필요 (ChatScrollBox, ChatInputBox BindWidget)
+
+### 글로벌 입력 시스템
+`PlayerControllerBase::SetupInputComponent()` — Enter/ESC 키 바인딩. 모든 컨텍스트 공용.
+- **Enter 키**: `OnEnterPressed()` → HUDBase → ChatWidget → `FocusChatInput()` (이미 포커스 중이면 스킵)
+- **ESC 키**: `OnEscapePressed()` → HUDBase → `TryCloseTopPopup()` (가상 함수)
+  - Lobby: Settings → Profile → Cosmetic → PlacementContextSelect 순서
+  - WaitingRoom: Settings → Profile 순서
+  - Play: `OnEscapePressed()` override → LeaveDialog 토글 (기존 동작 유지)
+- **HUD 위임 패턴**: `AWjWorldHUDBase::TryCloseTopPopup()` → HUD 서브클래스 override → 위젯 인스턴스 `TryCloseTopPopup()` 위임
 
 ### Coin 획득 알림 시스템
 `UCoinGainNotificationWidget` — "+X Coin" 토스트 표시. HUDBase에서 생성.
@@ -145,7 +159,7 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **UMG Blueprint 필요**: `WBP_CoinGainNotification` 생성 필요 (NotificationText BindWidget)
 
 ### WjWorldDeveloperSettings
-Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기본값, 미니게임 에셋, 배치 카탈로그, 카메라 InputAction, 보물상자 설정.
+Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기본값, 미니게임 에셋, 배치 카탈로그, 카메라 InputAction, 보물상자 설정, MaxDailyMatchRewards.
 **설정 우선순위**: BP 서브클래스 UPROPERTY 값 우선 → DeveloperSettings 폴백
 
 ### 패키징 주의사항
@@ -297,10 +311,10 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - `Memo/260225.txt` — 완료/미완료 분류 정리
 - `CLAUDE.md` — 채팅/코인알림/폴더구조/패턴 문서 갱신
 
-### 학습/메모
-- `FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice()` → `SetTransientPrimaryVolume()` 로 마스터 볼륨 제어 가능
-- `GConfig->SetFloat()` + `GConfig->Flush(false, GGameUserSettingsIni)` 로 즉시 영속 저장
-- 설정 UI처럼 단순한 경우 Subsystem 불필요 — 위젯에서 직접 UGameUserSettings/GConfig 접근이 간결
+#### JumpMap 장애물 서버 동기화
+- **문제** — MovingPlatform/RotatingObstacle이 클라이언트 독립 Tick → DeltaTime 차이로 위치 드리프트
+- **MovingPlatform** — `ServerElapsedTime` (Replicated) 추가, 순수 함수 `CalculatePositionFromTime()` 으로 서버/클라 동일 위치 계산
+  - 왕복 주기 = `TotalDistance / MoveSpeed * 2 + PauseTime * 2`, `fmod(Time, CycleTime)` → phase → 위치 보간
 
 ---
 *마지막 동기화: 2026-02-25*
