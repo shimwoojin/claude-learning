@@ -6,6 +6,7 @@ Claude Code와의 모든 대화 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-02-26 | WjWorld | [AW 벽 이동 재설계 + 중간 입장 관전자 + 프리뷰 투명 배경 + 채팅 필터링](./2026-02-26-wjworld-aw-wall-spectator-preview-chat.md) | #ApproachingWall #Algorithm #Spectator #SceneCapture #Material #MID #DeveloperSettings #HUD #ChatWidget |
 | 2026-02-25 | WjWorld | [JumpMap 동기화 + NormalAttack 경직 + 채팅/ESC UX + 코인 안정성 + 카메라 모드](./2026-02-25-wjworld-jumpmap-sync-stagger-ux-coin.md) | #Replication #GAS #GameplayEffect #Input #ESC #Chat #Currency #SteamInventory #Camera #RenderTarget #JumpMap #Minigame |
 | 2026-02-25 | WjWorld | [캐릭터 프리뷰 개선 + 메모 전체 검토](./2026-02-25-wjworld-character-preview-memo-review.md) | #SceneCapture #CharacterPreview #PropagateAlpha #bCaptureEveryFrame #MemoReview #Steam #Session #PasswordRoom |
 | 2026-02-25 | WjWorld | [설정 UI 구현 (디스플레이 품질 + 마스터 볼륨)](./2026-02-25-wjworld-settings-ui-implementation.md) | #UI #Settings #Audio #Graphics #GConfig #UGameUserSettings #DesignPattern |
