@@ -47,7 +47,8 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트 지원.
 - **공용 ConfirmDialogWidget**: `UI/Common/` — ShowPopup/ClosePopup + OnConfirmed/OnCancelled 델리게이트, NativeConstruct 전 호출 캐시 패턴
 
 ### Approaching Wall 미니게임
-벽이 다가오며 안전 구역으로 이동하는 PvP. BrickSpawner(비동기 8개/틱) → BrickMovement(단일 방향 선택) → WallManager(레벨별 속도). 12초마다 레벨업, Flood Fill 안전 구역 축소, TileActor 폭탄 신호.
+벽이 다가오며 안전 구역으로 이동하는 PvP. BrickSpawner(비동기 8개/틱) → WallManager(레벨별 속도). 12초마다 레벨업, Flood Fill 안전 구역 축소(4방향 인접), TileActor 폭탄 신호.
+- **벽 이동 알고리즘**: 중앙 할당 방식 — `AssignBrickTargets()`가 `ShrinkSafeZones()` 후 각 FloodFillPoint에 맨해튼 거리 기준 Greedy로 가장 가까운 Standard 벽돌 배정 → `BrickMovement.SetAssignedTarget()` 주입 → 4방향 제한 이동 (2칸 이상 거리 시 2칸 이동)
 
 ### Sumo Knockoff 미니게임
 원형 플랫폼 PvP 서바이벌. Z 낙하 감지 Eliminate, GA_Push(넉백+킬 추적), 3라운드 시스템, FloorRing(외곽→파괴), PowerUp(Speed/SuperPush/Shield), MapOption(Default/Bridge/Obstacle).
@@ -86,6 +87,9 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **비밀번호 검증 흐름**: RoomListEntryWidget → `bIsPrivate` 확인 → PasswordInputWidget 팝업 → RoomListWindow.JoinRoomWithPassword() → 클라이언트 사전 검증 → JoinSession
 - **PasswordInputWidget**: `UI/Session/` — ShowPopup/ClosePopup 패턴, Enter키 제출, 에러 메시지 표시
 - **[Private] 표시**: RoomListEntryWidget에서 비공개 방 이름 앞에 `[Private]` 접두사
+- **게임 중 방 노출**: `IN_PROGRESS` 세션 커스텀 설정으로 실제 진행 상태 추적, `UpdateSessionInProgress()` — StartGame/EndGame에서 호출
+- **[Playing] 표시**: RoomListEntryWidget에서 진행 중 방 이름 앞에 `[Playing]` 접두사, `bInProgress && !bAllowJoinInProgress` 시 Join 버튼 비활성화
+- **중간 입장 관전자**: `GameModePlay::HandleStartingNewPlayer_Implementation()` — Playing/Finished 단계 입장 시 `StartSpectatingOnly()`, GameRule 3종(AW/Sumo/JumpMap)에서 `IsGameInProgress()` 가드로 관전자 참여 추적 방지
 
 ### Steam 설정
 - **AppID**: 4399350, `WITH_STEAM` 매크로 (Win64), `Steam/itemdefs.json`
@@ -169,11 +173,8 @@ Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기
 
 ## 진행 중 / 미구현
 - Steam 정식 출시 준비
-- AW 벽 이동 알고리즘 재설계 필요: 현재 FloodFill 독립 방향 선택 → 벽돌 간 간격 발생, 목표 그리드 좌표 1:1 할당 방식으로 변경 검토
 - 솔로 컨텐츠 기획 필요: 봇 시스템, 솔로 모드, 또는 싱글 미니게임 추가
 - Skeletal mesh 코스메틱 확장: 코드 인프라 준비 완료, 에셋 제작 + itemdefs.json 등록 필요
-- 게임 진행 중 방 노출 + 중간 입장 처리: bAllowJoinInProgress/bInProgress 존재, UI 시각 구분 및 모드별 정책 미구현
-- UMG Blueprint 생성 필요: WBP_ChatWidget (ChatScrollBox, ChatInputBox), WBP_CoinGainNotification (NotificationText) + DeveloperSettings 설정
 
 ## 출시 전 체크리스트
 - `Steam/itemdefs.json`: 보물상자(Treasure Chest #0~#9) `drop_max_per_window`를 `100` → `1`로 되돌리기 (현재 테스트용 100)
@@ -317,5 +318,5 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
   - 왕복 주기 = `TotalDistance / MoveSpeed * 2 + PauseTime * 2`, `fmod(Time, CycleTime)` → phase → 위치 보간
 
 ---
-*마지막 동기화: 2026-02-25*
+*마지막 동기화: 2026-02-26*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
