@@ -55,11 +55,11 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트 지원.
 
 ### JumpMap 미니게임
 장애물 코스 타임어택. 시간 제한 120초, 체크포인트 리스폰, 완주 순서 추적.
-- **장애물**: KillZone, MovingPlatform(서버 시간 동기화), RotatingObstacle(서버 시간 동기화), PushWind, Checkpoint, End, GrapplePoint
+- **장애물**: KillZone, MovingPlatform(서버 시간 동기화 + OriginalLocation 리플리케이션), RotatingObstacle(서버 시간 동기화), PushWind, Checkpoint, End, GrapplePoint. Checkpoint/KillZone/PushWind는 커스텀 프로퍼티에서 BoxExtent 직렬화
 - **장애물 동기화**: `ServerElapsedTime` Replicated + `CalculatePositionFromTime()`/`CalculateRotationFromTime()` 순수 함수 → 클라/서버 동일 위치
 - **어빌리티**: GA_Dash(Shift), GA_Grapple(E), GA_DoubleJump
 - **CSV 레이아웃**: `JumpMapLayoutDataAsset` 내장+유저 로드, `#META:MapName:` 헤더, CustomProperties 11번째 컬럼
-- **액터 직렬화**: JumpMapActorBase의 JumpMapObjectId + Get/ApplySerializableProperties, 7개 서브클래스 구현
+- **액터 직렬화**: JumpMapActorBase의 JumpMapObjectId + Get/ApplySerializableProperties. KillZone, MovingPlatform, RotatingObstacle, PushWind, Checkpoint, End, GrapplePoint 7개 서브클래스 모두 구현 완료
 - **에디터**: WjWorldEditor 모듈 — JumpMapLevelEditorSubsystem + SJumpMapLayoutPanel
 
 ### Gameplay Ability System
@@ -123,11 +123,12 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 `ACharacterPreviewActor` — 프로필/상점 UI용 3D 캐릭터 프리뷰. `UPlayerProfileWidget`, `UCosmeticPreviewPanel`에서 사용.
 - **메시 복사**: `SetupFromPawn()` — SkeletalMesh + AnimBlueprint + RelativeRotation 복사 (Yaw=-90 보정 포함)
 - **코스메틱 프리뷰**: `SetupPreview()` — 비동기 메시 로드 + Socket 부착 + ShowOnlyList
-- **SceneCapture**: `PRM_UseShowOnlyList` + `SCS_FinalToneCurveHDR` + `ClearColor::Transparent` + `bAlwaysPersistRenderingState = true`
+- **SceneCapture**: `PRM_UseShowOnlyList` + `SCS_FinalColorHDR` + `ClearColor::Transparent` + `bAlwaysPersistRenderingState = true`
 - **실시간 캡처**: `bCaptureEveryFrame = true` (SetupFromPawn 완료 후 활성화, Idle 모션 반영)
-- **투명 배경**: `r.PostProcessing.PropagateAlpha=1` (DefaultEngine.ini) — post-processing alpha 보존
-- **RenderTarget**: `RTF_RGBA16f` + `InitCustomFormat(W, H, PF_FloatRGBA, false)` — alpha 완전 보존
-- **RenderTarget 적용**: `UImage::SetBrushResourceObject(RT)` 패턴
+- **투명 배경**: UI Material(`M_CharacterPreview`)에서 OneMinus로 alpha 반전 → `MaterialInstanceDynamic` → `Image::SetBrushResourceObject(MID)`
+- **DeveloperSettings**: `CharacterPreviewMaterial` (UI 카테고리) — Material 경로 관리
+- **RenderTarget**: `RTF_RGBA16f` + `InitCustomFormat(500, 1000, PF_FloatRGBA, false)`
+- **스폰 위치**: `(0, 0, 15000)` — 월드와 겹치지 않는 상공
 
 ### 설정 시스템
 `USettingsWidget` — 로비/대기실 설정 팝업. ShowPopup/ClosePopup 패턴.
@@ -139,12 +140,12 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **HUD 연동**: LobbyHUDWidget, WaitingRoomHUDWidget에서 `SettingsWidgetClass`/`SettingsWidgetInstance` 관리
 
 ### 채팅 시스템
-`UChatWidget` — 멀티플레이어 채팅. HUDBase에서 생성, 모든 컨텍스트(Lobby, WaitingRoom, Play) 공용.
+`UChatWidget` — 멀티플레이어 채팅. HUDBase에서 `bCreateChatWidget=true`인 경우만 생성 (Lobby/WaitingRoom/Play). Intro/Login은 미생성.
 - **RPC 흐름**: PlayerControllerBase.SendChatMessage() → Server RPC → GameStateBase.MulticastReceiveChatMessage() → OnChatMessageReceived 델리게이트
 - **위젯**: ScrollBox(메시지 목록) + EditableTextBox(입력), Enter 키 전송, `IsChatInputFocused()` API
 - **글로벌 Enter 키**: PlayerControllerBase에서 Enter → `ChatWidget.FocusChatInput()` (이미 포커스 중이면 스킵)
 - **DeveloperSettings**: `ChatWidgetClass` (UI 카테고리)
-- **UMG Blueprint 필요**: `WBP_ChatWidget` 생성 필요 (ChatScrollBox, ChatInputBox BindWidget)
+- **UMG Blueprint**: `WBP_ChatWidget` (ChatScrollBox, ChatInputBox BindWidget)
 
 ### 글로벌 입력 시스템
 `PlayerControllerBase::SetupInputComponent()` — Enter/ESC 키 바인딩. 모든 컨텍스트 공용.
@@ -160,10 +161,10 @@ ItemId(FName) 기반. `ECosmeticSlot`(Head/Body/Back/Effect), 비동기 메시 �
 - **구독**: OnCurrencyBalanceChanged 델리게이트 (CurrencySubsystem)
 - **표시**: 이전 잔액 캐시 → 델타 계산 → 양수면 금색 텍스트 3초 표시
 - **DeveloperSettings**: `CoinGainNotificationWidgetClass` (UI 카테고리)
-- **UMG Blueprint 필요**: `WBP_CoinGainNotification` 생성 필요 (NotificationText BindWidget)
+- **UMG Blueprint**: `WBP_CoinGainNotification` (NotificationText BindWidget)
 
 ### WjWorldDeveloperSettings
-Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기본값, 미니게임 에셋, 배치 카탈로그, 카메라 InputAction, 보물상자 설정, MaxDailyMatchRewards.
+Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기본값, 미니게임 에셋, 배치 카탈로그, 카메라 InputAction, 보물상자 설정, MaxDailyMatchRewards, CharacterPreviewMaterial.
 **설정 우선순위**: BP 서브클래스 UPROPERTY 값 우선 → DeveloperSettings 폴백
 
 ### 패키징 주의사항
@@ -187,7 +188,6 @@ Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기
 - Sumo FloorRing 디자인 변경 검토 — 개별 타일 랜덤 파괴 전환 시 리플리케이션 비용
 - 에셋 커밋 전략 수립 — LFS 정책, 브랜치 전략, 에셋 전용 커밋 분리
 - BP_WaitingRoomHUDWidget에서 ProfileWidgetClass 설정 확인 — 3자 프로필이 안 보이는 문제 (코드 로직 정상)
-- JumpMap GrapplePoint 콜리전 확인 — SphereComponent가 NoCollision, MeshComponent 콜리전으로 라인트레이스 감지되는지 테스트 필요
 
 ## 코딩 컨벤션
 - 언리얼 엔진 코딩 표준 준수
@@ -218,6 +218,86 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 
 # WjWorld 개발 로그
 
+## 2026-02-27
+### 작업 내용
+
+#### 버그 수정: JumpMap MovingPlatform 클라이언트 높이 불일치
+- **증상**: 호스트에서 Z 0~300 왕복하는 발판이 클라이언트에서 300~600으로 관측됨
+- **원인**: 클라이언트가 BeginPlay 시 `GetActorLocation()`으로 이미 이동 중인 위치를 `OriginalLocation`으로 캡처 → MoveOffset만큼 높은 곳에서 왕복
+- **수정 과정** (3단계):
+  1. MoveOffset/MoveSpeed/PauseTime Replicated 추가 → 미해결
+  2. `SetReplicateMovement(false)` 추가 (ReplicatedMovement가 이동 중 위치 전달 차단) → 미해결
+  3. `OriginalLocation`을 `ReplicatedUsing = OnRep_OriginalLocation`으로 변경 → **해결**
+- 서버만 BeginPlay에서 정확한 스폰 위치 저장, 클라이언트는 OnRep에서 수신 후 타이밍 캐시 재계산
+
+#### 버그 수정: 로비 배치오브젝트 클라이언트 추락 (45도 회전)
+- **증상**: SaveGame으로 배치한 오브젝트 위에서 클라이언트만 추락 (90도는 정상, 45도에서 발생)
+- **원인**: PlacedObjectActor의 MeshComponent가 Movable → CMC가 MovementBase로 추적 시도 → 비리플리케이션 액터라 클라에서 base 해석 실패
+- **수정**: MeshComponent 모빌리티를 `Stationary`로 변경 + `InitializeFromSaveData`에서 동기 메시 로딩 (콜리전 즉시 생성)
+
+#### JumpMap Checkpoint/KillZone/PushWind BoxExtent 직렬화 추가
+- CSV 레이아웃에서 콜리전 박스 크기를 인스턴스별 저장/복원 가능
+- Checkpoint: CheckpointTrigger BoxExtent 추가 (기존 CheckpointOrder, RespawnOffset에 병행)
+- KillZone: GetSerializableProperties/ApplySerializedProperties 신규 오버라이드 + BoxExtent
+- PushWind: WindZone BoxExtent 추가 (기존 WindForce에 병행)
+- GrapplePoint: SphereComponent → 기존 GrappleRadius로 이미 직렬화됨
+
+#### JumpMap BP EndPoint 메시 위치 분석
+- **문제**: 유저가 배치한 EndPoint 메시가 ~90 단위 아래로 스폰됨
+- **원인**: PreviewActor는 메시=루트(오프셋 없음), 실제 BP는 MeshComponent RelativeLocation Z=-90
+- **해결 방안**: BP에서 MeshComponent RelativeLocation을 (0,0,0)으로 통일, 필요시 GroundOffset 활용 (BP 에디터 작업)
+
+### 학습/메모
+- **UE 리플리케이션 초기 번들**: Actor channel 생성 시 현재 트랜스폼이 전달됨. `bReplicateMovement=true`면 ReplicatedMovement에 현재 위치가 포함되어 클라의 초기 위치가 스폰 위치와 다를 수 있음
+- **ReplicatedUsing 활용**: 서버에서만 설정하는 값을 클라에 정확히 전달할 때 `UPROPERTY(ReplicatedUsing=OnRep_X)`가 `GetActorLocation()` 의존보다 안전
+- **CMC MovementBase**: 비리플리케이션 Movable 액터는 클라에서 base 추적 실패 → Stationary로 변경하면 CMC가 base로 인식하지 않아 해결
+
+### 이슈/해결
+- **MovingPlatform 3단계 디버깅**: 프로퍼티 리플리케이션만으로는 부족, ReplicateMovement 비활성화도 부족, OriginalLocation 직접 리플리케이션이 최종 해결
+- **하위 호환성**: BoxExtent 직렬화 추가 시 기존 CSV에는 해당 프로퍼티 없음 → `Find()` nullptr → 생성자 기본값 유지
+
+---
+
+## 2026-02-26
+### 작업 내용
+
+#### AW 벽 이동 알고리즘 재설계 (중앙 할당 방식)
+- **AssignBrickTargets()** — `ShrinkSafeZones()` 후 FloodFillPoints에 맨해튼 거리 기준 Greedy로 가장 가까운 Standard 벽돌 배정
+- **BrickMovement.SetAssignedTarget()** — 외부 타겟 주입, 기존 자체 방향 결정 로직 대체
+- **4방향 제한** — 대각선 이동 제거, ShrinkSafeZones/PredictNextLevelIsLast도 4방향 인접으로 변경
+- **2칸 이동** — 목표까지 거리 2 이상이면 한 번에 2칸 이동
+
+#### 게임 중 방 노출 + 중간 입장 관전자 시스템
+- **세션 IN_PROGRESS 상태** — `UpdateSessionInProgress()` 메서드 추가, GameInstance의 StartGame/EndGame에서 호출
+- **방 목록 [Playing] 표시** — RoomListEntryWidget에 `[Playing]` 접두사, `bInProgress && !bAllowJoinInProgress` 시 Join 버튼 비활성화
+- **중간 입장자 관전자** — `GameModePlay::HandleStartingNewPlayer()` override, GamePhase가 Playing/Finished면 `StartSpectatingOnly()`
+- **GameRule 가드** — AW/Sumo/JumpMap 각 `OnPlayerJoined()`에 `IsGameInProgress()` 가드, `OnPlayerLeft()`에서 관전자 카운터 제외
+
+#### 캐릭터 프리뷰 투명 배경 (Alpha 반전 머티리얼)
+- **문제**: SceneCapture의 모든 CaptureSource 옵션에서 alpha 반전 발생 (메시=투명, 배경=불투명)
+- **해결**: UI Material(`M_CharacterPreview`)에서 OneMinus로 alpha 반전 → MaterialInstanceDynamic으로 RenderTarget 전달
+- **DeveloperSettings 연동** — `CharacterPreviewMaterial` TSoftObjectPtr 추가, 하드코딩 경로 제거
+- **위젯 적용** — PlayerProfileWidget, CosmeticPreviewPanel 모두 MID 방식으로 변경 (폴백: 직접 RT)
+- **스폰 위치** — `(0, 0, 15000)` 으로 통일 (기존 10000,10000,0 / 0,0,-10000)
+- **RenderTarget 크기** — 500x1000으로 변경
+
+#### HUDBase 채팅 위젯 필터링
+- **bCreateChatWidget** — protected bool 플래그 추가 (기본 false)
+- Lobby/WaitingRoom/Play HUD 생성자에서 `true` 설정 → Intro/Login에선 채팅 미생성
+
+### 학습/메모
+- **SceneCapture CaptureSource별 alpha 동작**:
+  - `SCS_FinalToneCurveHDR` / `SCS_FinalColorHDR`: alpha 반전 (ShowFlags 조합과 무관)
+  - `SCS_SceneColorHDR`: 메시 렌더링 불완전
+  - `SCS_SceneColorSceneDepth`: alpha=depth → 배경 항상 불투명
+  - 결론: UI Material에서 OneMinus로 alpha 반전이 가장 안정적
+- **AW Greedy 할당**: TActorIterator로 Standard 벽돌 수집 → FloodFillPoint마다 최근접 미배정 벽돌 매칭
+
+### 이슈/해결
+- **alpha 반전**: 3가지 CaptureSource 시도 후 Material 기반 해결
+
+---
+
 ## 2026-02-25
 ### 작업 내용
 
@@ -236,87 +316,7 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 
 #### 코스메틱 구매 중복 방지 + Steam_GrantCoin 치트
 - **CosmeticMainWindow** — ExchangePending 중 구매 버튼 중복 클릭 방지
-- **CurrencySubsystem** — `IsExchangePending()` BlueprintCallable API 추가
-- **PlayerControllerBase** — `Steam_GrantCoin` 콘솔 명령어 (GenerateItems)
-
-#### 캐릭터 프리뷰 개선 (SceneCapture)
-- **투명 배경** — `DefaultEngine.ini`에 `r.PostProcessing.PropagateAlpha=1` 추가, `ClearColor::Transparent` + `SCS_FinalColorLDR` 조합으로 배경 투명화
-- **실시간 Idle 모션** — `SetupFromPawn()` 완료 후 `bCaptureEveryFrame = true` 활성화 (생성자에서는 false 유지)
-- **Yaw 수정** — `PreviewMeshComponent->SetRelativeRotation(SourceMesh->GetRelativeRotation())` 로 ACharacter Yaw=-90° 보정값 복사
-- **PlayerProfileWidget 간소화** — 0.5초 타이머 제거 → 즉시 `ApplyRenderTargetToImage()`, `SetBrushResourceObject(RT)` 패턴으로 통일
-
-#### 비밀번호 방 시스템
-- **SessionManager** — `CreateSession()`에서 `PASSWORD` 커스텀 설정 저장, `GetSessionPassword()` API 추가
-- **PasswordInputWidget 신규** — ShowPopup/ClosePopup 패턴, Enter키 제출, 에러 메시지 표시, `OnPasswordSubmitted`/`OnPasswordCancelled` 델리게이트
-- **RoomListEntryWidget** — `bIsPrivate` 확인 → 부모 `RoomListWindow::RequestJoinPrivateRoom()` 호출, `[Private]` 접두사 표시
-- **RoomListWindow** — `JoinRoomWithPassword()` 비밀번호 대조 → 불일치 시 에러, 일치 시 `JoinRoom()`
-
-#### 기타 개선
-- **RoomListWindow** — `ShowPopup()`에서 `#if WITH_STEAM` → Steam 기본 모드
-- **GA_Grapple** — `MaxPullDuration` (2초) 타임아웃 추가, 무한 풀 방지
-- **WaitingRoomHUD** — `StartGameStatusText` 추가 (인원 부족/준비 대기 사유 표시)
-- **PlayerProfileWidget** — LAN/NULL 환경에서 UniqueId 미유효 시 "Stats unavailable" 표시
-- **메모 정리** — 12개 항목 검토, 완료 7건 / 추가 논의 6건 분류
-
-#### 채팅 시스템 구현
-- **RPC 파이프라인** — PC `SendChatMessage()` → Server RPC (`ServerSendChatMessage`) → GameState `MulticastReceiveChatMessage()` (NetMulticast) → `OnChatMessageReceived` 델리게이트 → ChatWidget UI
-- **GameStateBase** — `FOnChatMessageReceived` 동적 멀티캐스트 델리게이트 + `MulticastReceiveChatMessage` NetMulticast RPC 추가
-- **PlayerControllerBase** — `SendChatMessage()` (BlueprintCallable, 200자 제한) + `ServerSendChatMessage()` (Server, Reliable)
-- **ChatWidget 신규** — `UI/Chat/ChatWidget.h/.cpp` 생성
-  - `ChatScrollBox` (메시지 목록) + `ChatInputBox` (입력) BindWidget
-  - Enter키 전송 (`OnTextCommitted` ETextCommit::OnEnter)
-  - `AddChatMessage()`: TextBlock 동적 생성, ScrollBox 추가, 자동 스크롤, 50개 메시지 상한
-- **HUDBase 연동** — DeveloperSettings `ChatWidgetClass` TSoftClassPtr → BeginPlay에서 CreateWidget + AddToViewport
-
-#### Coin 획득 알림 UI
-- **CoinGainNotificationWidget 신규** — `UI/HUD/CoinGainNotificationWidget.h/.cpp` 생성
-  - `OnCurrencyBalanceChanged` 구독, 이전 잔액 캐싱 → 차액 계산
-  - "+X Coin" 골드 텍스트 토스트, 3초 자동 숨김
-- **HUDBase 연동** — DeveloperSettings `CoinGainNotificationWidgetClass` → BeginPlay에서 생성
-- **Steam Inventory async 수정** — CurrencySubsystem이 CosmeticSubsystem의 `AllItemQuantities`/`AllItemInstanceIds` 캐시에서 읽도록 변경 (중복 async GetAllItems 호출 제거)
-
-#### 게임 종료 시 호스트 조기 퇴장 → 클라 프리즈 수정
-- **문제** — 게임 종료 후 ServerTravel 중 호스트가 나가면 클라가 30초 호스트 마이그레이션 타임아웃에 걸림
-- **bGameEndTraveling 플래그** — `WjWorldGameInstance`에 추가
-  - 서버: `EndGame()`에서 set
-  - 클라: `OnRep_GamePhase(Finished)`에서 set
-  - `HandleNetworkFailure`/`HandleTravelFailure`에서 체크 → 마이그레이션 스킵 → 즉시 로비 복귀
-  - `CreateRoom()`/`MigrationFailed()`에서 reset
-
-#### 호스트 마이그레이션 수정 (WaitingRoom)
-- **NetworkMode 버그** — 클라의 `SessionManager.LastRoomSettings`가 JoinSession 시 미설정 → LAN 기본값 → 마이그레이션 검색 모드 오류
-  - **수정**: `BeginHostMigration()`에서 `MigrationContext.CachedRoomSettings`로 `UpdateLastRoomSettings()` 동기화
-- **PlayerList 버그** — `CachePlayerList()` 서버 전용 호출 → 모든 클라가 자신을 새 호스트로 판단
-  - **수정**: `BeginHostMigration()`에서 `PlayerArray` fallback 빌드 + `OnRep_RoomSettings()`에서 `BroadcastPlayerListChanged()` 호출
-
-### 변경 파일
-- `Config/DefaultEngine.ini` — PropagateAlpha 추가
-- `UI/Profile/CharacterPreviewActor.cpp` — 회전 복사 + 실시간 캡처
-- `UI/Profile/PlayerProfileWidget.cpp` — 타이머 제거 + 브러시 간소화 + LAN 스탯 처리
-- `UI/Session/PasswordInputWidget.h/.cpp` (신규)
-- `UI/Session/RoomListEntryWidget.h/.cpp` — 비공개 방 표시 + 비밀번호 팝업 연동
-- `UI/Session/RoomListWindow.h/.cpp` — Steam 기본 모드 + 비밀번호 검증 흐름
-- `Core/Session/SessionManager.h/.cpp` — GetSessionPassword API
-- `AbilitySystem/Abilities/GA_Grapple.h/.cpp` — MaxPullDuration 타임아웃
-- `UI/WaitingRoom/WaitingRoomHUDWidget.h/.cpp` — StartGameStatusText
-- `Core/Base/WjWorldGameStateBase.h/.cpp` — 채팅 RPC + 델리게이트
-- `Core/Base/WjWorldPlayerControllerBase.h/.cpp` — SendChatMessage + ServerRPC
-- `Core/Base/WjWorldHUDBase.h/.cpp` — ChatWidget + CoinGainNotification 생성
-- `UI/Chat/ChatWidget.h/.cpp` (신규) — 채팅 위젯
-- `UI/HUD/CoinGainNotificationWidget.h/.cpp` (신규) — 코인 획득 알림
-- `Core/WjWorldGameInstance.h/.cpp` — bGameEndTraveling 플래그 + 마이그레이션 수정
-- `Core/Play/WjWorldGameStatePlay.cpp` — OnRep_GamePhase에서 MarkGameEndTraveling
-- `Core/Local/WaitingRoom/WjWorldGameStateWaitingRoom.cpp` — OnRep_RoomSettings PlayerList 동기화
-- `Setting/WjWorldDeveloperSettings.h` — ChatWidgetClass 추가
-- `Config/DefaultWjWorld.ini` — ChatWidgetClass 경로 추가
-- `Memo/260225.txt` — 완료/미완료 분류 정리
-- `CLAUDE.md` — 채팅/코인알림/폴더구조/패턴 문서 갱신
-
-#### JumpMap 장애물 서버 동기화
-- **문제** — MovingPlatform/RotatingObstacle이 클라이언트 독립 Tick → DeltaTime 차이로 위치 드리프트
-- **MovingPlatform** — `ServerElapsedTime` (Replicated) 추가, 순수 함수 `CalculatePositionFromTime()` 으로 서버/클라 동일 위치 계산
-  - 왕복 주기 = `TotalDistance / MoveSpeed * 2 + PauseTime * 2`, `fmod(Time, CycleTime)` → phase → 위치 보간
 
 ---
-*마지막 동기화: 2026-02-26*
+*마지막 동기화: 2026-02-27*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
