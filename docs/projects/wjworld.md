@@ -218,6 +218,28 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 
 # WjWorld 개발 로그
 
+## 2026-03-04
+### 작업 내용
+
+#### 매치 보상 카운터 위젯 (MatchRewardCounterWidget)
+- **목적**: 승리/패배 일일 보상 잔여 횟수를 Lobby/WaitingRoom HUD에 상시 표시
+- **DeveloperSettings 확장**: `MaxWinRewardsPerDay(5)`, `MaxLossRewardsPerDay(10)`, `WinRewardCoinAmount(50)`, `LossRewardCoinAmount(10)` — Steam `drop_max_per_window` 미러링 상수
+- **CurrencySubsystem 분리 추적**: `TodayWinRewardCount`/`TodayLossRewardCount` 멤버 + `FOnMatchRewardCountChanged` 델리게이트 추가
+  - `TriggerMatchReward()`: bIsWinner에 따라 승리/패배 카운트 각각 증가, Steam TriggerItemDrop 실패 시 해당 카운트를 max로 보정
+  - `LoadDailyRewardData()`/`SaveDailyRewardData()`/`CheckDailyReset()`: 분리 카운트 포함
+- **MatchRewardCounterWidget**: `WinCountText`/`LossCountText` (BindWidget) + `WinRewardText`/`LossRewardText` (BindWidgetOptional)
+  - NativeConstruct에서 초기 카운트 + 델리게이트 구독, 상한 도달 시 회색 처리
+- **HUDBase**: `bCreateMatchRewardCounter` 플래그 — Lobby/WaitingRoom 생성자에서만 true 설정
+
+### 학습/메모
+- **HUDBase 공통 위젯 패턴**: `bCreate*` protected bool 플래그 + 서브클래스 생성자에서 true 설정 → BeginPlay에서 조건부 생성. ChatWidget, MatchRewardCounterWidget 모두 동일 패턴
+- **Steam drop_max_per_window 보정**: TriggerItemDrop 실패 = Steam 서버 한도 초과로 판단 → 로컬 카운트를 max로 보정하여 UI 즉시 반영
+
+### 이슈/해결
+- (없음)
+
+---
+
 ## 2026-03-02
 ### 작업 내용
 
@@ -294,28 +316,6 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - **4방향 제한** — 대각선 이동 제거, ShrinkSafeZones/PredictNextLevelIsLast도 4방향 인접으로 변경
 - **2칸 이동** — 목표까지 거리 2 이상이면 한 번에 2칸 이동
 
-#### 게임 중 방 노출 + 중간 입장 관전자 시스템
-- **세션 IN_PROGRESS 상태** — `UpdateSessionInProgress()` 메서드 추가, GameInstance의 StartGame/EndGame에서 호출
-- **방 목록 [Playing] 표시** — RoomListEntryWidget에 `[Playing]` 접두사, `bInProgress && !bAllowJoinInProgress` 시 Join 버튼 비활성화
-- **중간 입장자 관전자** — `GameModePlay::HandleStartingNewPlayer()` override, GamePhase가 Playing/Finished면 `StartSpectatingOnly()`
-- **GameRule 가드** — AW/Sumo/JumpMap 각 `OnPlayerJoined()`에 `IsGameInProgress()` 가드, `OnPlayerLeft()`에서 관전자 카운터 제외
-
-#### 캐릭터 프리뷰 투명 배경 (Alpha 반전 머티리얼)
-- **문제**: SceneCapture의 모든 CaptureSource 옵션에서 alpha 반전 발생 (메시=투명, 배경=불투명)
-- **해결**: UI Material(`M_CharacterPreview`)에서 OneMinus로 alpha 반전 → MaterialInstanceDynamic으로 RenderTarget 전달
-- **DeveloperSettings 연동** — `CharacterPreviewMaterial` TSoftObjectPtr 추가, 하드코딩 경로 제거
-- **위젯 적용** — PlayerProfileWidget, CosmeticPreviewPanel 모두 MID 방식으로 변경 (폴백: 직접 RT)
-- **스폰 위치** — `(0, 0, 15000)` 으로 통일 (기존 10000,10000,0 / 0,0,-10000)
-- **RenderTarget 크기** — 500x1000으로 변경
-
-#### HUDBase 채팅 위젯 필터링
-- **bCreateChatWidget** — protected bool 플래그 추가 (기본 false)
-- Lobby/WaitingRoom/Play HUD 생성자에서 `true` 설정 → Intro/Login에선 채팅 미생성
-
-### 학습/메모
-- **SceneCapture CaptureSource별 alpha 동작**:
-  - `SCS_FinalToneCurveHDR` / `SCS_FinalColorHDR`: alpha 반전 (ShowFlags 조합과 무관)
-  - `SCS_SceneColorHDR`: 메시 렌더링 불완전
 
 ---
 *마지막 동기화: 2026-03-04*
