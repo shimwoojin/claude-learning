@@ -2,6 +2,12 @@
 
 Claude Code와의 모든 대화 기록입니다.
 
+## 2026-03
+
+| 날짜 | 프로젝트 | 주제 | 태그 |
+|------|----------|------|------|
+| 2026-03-04 | WjWorld | [AW 폴리싱 + Steam TriggerItemDrop 결과 폴링 + 보상 중복 방지](./2026-03-04-wjworld-aw-polishing-steam-triggeritemdrop.md) | #ApproachingWall #GAS #SteamInventory #TriggerItemDrop #Replication #bugfix #TreasureChest #Currency #Polishing |
+
 ## 2026-02
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
