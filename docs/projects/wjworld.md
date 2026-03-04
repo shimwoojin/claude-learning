@@ -178,7 +178,7 @@ Project Settings > Game > WjWorld. 맵 경로, GameMode 클래스, 캐릭터 기
 - Skeletal mesh 코스메틱 확장: 코드 인프라 준비 완료, 에셋 제작 + itemdefs.json 등록 필요
 
 ## 출시 전 체크리스트
-- `Steam/itemdefs.json`: 보물상자(Treasure Chest #0~#9) `drop_max_per_window`를 `100` → `1`로 되돌리기 (현재 테스트용 100)
+- (현재 없음)
 
 ## 잔존 버그
 - (현재 없음)
@@ -217,6 +217,33 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 ## 최근 개발 로그
 
 # WjWorld 개발 로그
+
+## 2026-03-02
+### 작업 내용
+
+#### 버그 수정: 채팅 전송 후 키보드 조작 불능
+- **증상**: Enter로 채팅 전송 후 WASD 등 키보드 조작이 안 됨 — 화면 클릭해야 복원
+- **원인**: `SendCurrentMessage()`에서 텍스트만 클리어하고 포커스를 ChatInputBox에 남겨둠 → 키보드 입력이 계속 채팅 위젯으로 전달
+- **수정**: `RestoreGameFocus()` 함수 추가 — `FSlateApplication::SetUserFocusToGameViewport(0)` 호출
+  - 메시지 전송 후 + 빈 메시지 Enter 시 모두 포커스 복원
+
+#### JumpMap 에셋 갱신 + GA_Grapple 감지 범위 확대
+- GrappleRange 2000 → 3000 (감지 범위 확대)
+- JumpMap BP 에셋 4개 (CheckPoint, End, GrapplePoint, RotatingObstacle) 갱신
+- DA_JumpMapLayouts, DA_JumpMapPlaceableCatalog, DA_MinigameCatalog 갱신
+
+#### UI 위젯 블루프린트 갱신 + 리소스 추가
+- 위젯 블루프린트 16개 수정 (Chat, Cosmetic, Currency, Placement, Lobby, Profile, Session, Setting, WaitingRoom)
+- 버튼 이미지 9개, 배경/아이콘 4개 (T_BG_1/2, T_Gem, T_Simple_BG_1), 머티리얼 1개 (M_InvAlpha) 신규 추가
+
+### 학습/메모
+- **UMG 포커스 관리**: `EditableTextBox::SetKeyboardFocus()` 호출 시 Slate가 UI 입력 모드로 전환됨. 전송 후 `FSlateApplication::SetUserFocusToGameViewport(0)`로 명시적 복원 필요
+- **SetInputMode vs SetUserFocusToGameViewport**: `SetInputMode(FInputModeGameAndUI())`는 컨텍스트별 분기 필요하지만, `SetUserFocusToGameViewport`는 현재 InputMode를 유지하면서 포커스만 이동시켜 더 범용적
+
+### 이슈/해결
+- **채팅 포커스 복원**: `SetInputMode` 대신 `SetUserFocusToGameViewport` 사용 — Lobby(GameAndUI), Play(GameOnly), WaitingRoom(GameAndUI) 각각 다른 InputMode를 건드리지 않고 포커스만 게임으로 복원
+
+---
 
 ## 2026-02-27
 ### 작업 내용
@@ -289,34 +316,7 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 - **SceneCapture CaptureSource별 alpha 동작**:
   - `SCS_FinalToneCurveHDR` / `SCS_FinalColorHDR`: alpha 반전 (ShowFlags 조합과 무관)
   - `SCS_SceneColorHDR`: 메시 렌더링 불완전
-  - `SCS_SceneColorSceneDepth`: alpha=depth → 배경 항상 불투명
-  - 결론: UI Material에서 OneMinus로 alpha 반전이 가장 안정적
-- **AW Greedy 할당**: TActorIterator로 Standard 벽돌 수집 → FloodFillPoint마다 최근접 미배정 벽돌 매칭
-
-### 이슈/해결
-- **alpha 반전**: 3가지 CaptureSource 시도 후 Material 기반 해결
 
 ---
-
-## 2026-02-25
-### 작업 내용
-
-#### 설정 UI 구현 (디스플레이 품질 + 마스터 볼륨)
-- **SettingsWidget 신규** — `UI/Setting/SettingsWidget.h/.cpp` 생성
-  - `UWjWorldUserWidgetBase` 상속, ShowPopup/ClosePopup 패턴
-  - `GraphicsQualityComboBox` (Low/Medium/High/Epic) → `UGameUserSettings::SetOverallScalabilityLevel()` + `SaveSettings()`
-  - `MasterVolumeSlider` (0.0~1.0) + `VolumePercentText` ("80%" 등)
-  - 즉시 적용 패턴 (Apply 버튼 없음) — 슬라이더/콤보박스 변경 시 바로 반영
-- **볼륨 영속** — `GConfig` (`GGameUserSettingsIni`, `[WjWorldSettings]` 섹션, `MasterVolume` 키)
-- **볼륨 적용** — `static ApplySavedMasterVolume()` → `FAudioDeviceHandle::SetTransientPrimaryVolume()`
-- **GameInstance::Init()** — 게임 시작 시 저장된 마스터 볼륨 자동 복원
-- **LobbyHUDWidget** — `SettingsWidgetClass`/`SettingsWidgetInstance` 추가, `OnSettingsClicked()` 기존 품질 사이클링 코드 제거 → 설정 팝업 연동
-- **WaitingRoomHUDWidget** — `SettingsButton` (BindWidgetOptional), `SettingsWidgetClass`/`SettingsWidgetInstance`, `OnSettingsClicked()` 추가
-- **BP 작업** — `WBP_SettingsWidget` 위젯 블루프린트 생성, LobbyHUD/WaitingRoomHUD에 SettingsWidgetClass 설정
-
-#### 코스메틱 구매 중복 방지 + Steam_GrantCoin 치트
-- **CosmeticMainWindow** — ExchangePending 중 구매 버튼 중복 클릭 방지
-
----
-*마지막 동기화: 2026-02-27*
+*마지막 동기화: 2026-03-04*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
