@@ -6,6 +6,7 @@ Claude Code와의 모든 대화 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-03-05 | WjWorld | [Destructible 벽돌 단계별 파괴 연출 + 벽돌 머티리얼 시스템](./2026-03-05-wjworld-destructible-brick-staged-damage.md) | #ApproachingWall #Destructible #Niagara #Material #DeveloperSettings #ModelingMode #MeshSwap |
 | 2026-03-04 | WjWorld | [AW 폴리싱 + Steam TriggerItemDrop 결과 폴링 + 보상 중복 방지](./2026-03-04-wjworld-aw-polishing-steam-triggeritemdrop.md) | #ApproachingWall #GAS #SteamInventory #TriggerItemDrop #Replication #bugfix #TreasureChest #Currency #Polishing |
 
 ## 2026-02

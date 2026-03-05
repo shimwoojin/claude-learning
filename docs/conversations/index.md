@@ -6,6 +6,7 @@ Claude Code와의 대화 내용을 정리한 기록입니다.
 
 | 날짜 | 프로젝트 | 주제 | 태그 |
 |------|----------|------|------|
+| 2026-03-05 | WjWorld | [Destructible 벽돌 단계별 파괴 연출 + 벽돌 머티리얼 시스템](./2026-03-05-wjworld-destructible-brick-staged-damage.md) | #ApproachingWall #Destructible #Niagara #Material #DeveloperSettings #ModelingMode #MeshSwap |
 | 2026-03-04 | WjWorld | [AW 폴리싱 + Steam TriggerItemDrop 결과 폴링 + 보상 중복 방지](./2026-03-04-wjworld-aw-polishing-steam-triggeritemdrop.md) | #ApproachingWall #GAS #SteamInventory #TriggerItemDrop #Replication #bugfix #TreasureChest #Currency #Polishing |
 | 2026-02-26 | WjWorld | [AW 벽 이동 재설계 + 중간 입장 관전자 + 프리뷰 투명 배경 + 채팅 필터링](./2026-02-26-wjworld-aw-wall-spectator-preview-chat.md) | #ApproachingWall #Algorithm #Spectator #SceneCapture #Material #MID #DeveloperSettings #HUD #ChatWidget |
 | 2026-02-25 | WjWorld | [JumpMap 동기화 + NormalAttack 경직 + 채팅/ESC UX + 코인 안정성 + 카메라 모드](./2026-02-25-wjworld-jumpmap-sync-stagger-ux-coin.md) | #Replication #GAS #GameplayEffect #Input #ESC #Chat #Currency #SteamInventory #Camera #RenderTarget #JumpMap #Minigame |
