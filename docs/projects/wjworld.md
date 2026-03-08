@@ -49,6 +49,11 @@ Lobby / ApproachingWall / JumpMap 3개 컨텍스트 지원.
 ### Approaching Wall 미니게임
 벽이 다가오며 안전 구역으로 이동하는 PvP. BrickSpawner(비동기 8개/틱) → WallManager(레벨별 속도). 12초마다 레벨업, Flood Fill 안전 구역 축소(4방향 인접), TileActor 폭탄 신호.
 - **벽 이동 알고리즘**: 중앙 할당 방식 — `AssignBrickTargets()`가 `ShrinkSafeZones()` 후 각 FloodFillPoint에 맨해튼 거리 기준 Greedy로 가장 가까운 Standard 벽돌 배정 → `BrickMovement.SetAssignedTarget()` 주입 → 4방향 제한 이동 (2칸 이상 거리 시 2칸 이동)
+- **벽돌 타입별 머티리얼**: DeveloperSettings `BrickMaterialStandard/Explosive/Moving/Destructible` — `GetBrickMaterial()` 로드, 미설정 시 기존 색상 폴백
+- **Destructible 단계별 파괴 연출**: `DestructibleBrickDamageStageMeshes` 배열 (타격마다 메시 교체) + `BrickDamageHitEffect` (타격 시 파편 Niagara)
+  - `ApplyDamage()` → HP > 0: `MulticastSpawnDamageHitEffect()` + `UpdateDamageVisuals()` (메시 교체 + MID 재생성 + CrackIntensity)
+  - HP = 0: 기존 GeometryCollection 파쇄 + DestroyBrick (변경 없음)
+  - 배열 비어있으면 메시 교체 스킵, 이펙트 미설정이면 스폰 스킵 (하위 호환)
 
 ### Sumo Knockoff 미니게임
 원형 플랫폼 PvP 서바이벌. Z 낙하 감지 Eliminate, GA_Push(넉백+킬 추적), 3라운드 시스템, FloorRing(외곽→파괴), PowerUp(Speed/SuperPush/Shield), MapOption(Default/Bridge/Obstacle).
@@ -218,6 +223,61 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
 
 # WjWorld 개발 로그
 
+## 2026-03-06
+### 작업 내용
+
+#### Explosive 벽돌 폭발 시 인접 벽돌 파괴
+- **BrickComponent Explode() 확장**: `OverlapMultiByChannel(ECC_Pawn)` → `OverlapMultiByObjectType(AllObjects)`로 변경하여 벽돌 액터도 감지
+- **인접 벽돌에 HandleWallCollision(Dir) 호출** → 타입별 반응:
+  - Explosive → 연쇄 폭발 (HandleWallCollision → Explode → DestroyBrick)
+  - Destructible → 즉시 파쇄 파괴
+  - Moving → 밀림 (PushInDirection)
+  - Standard → 무반응 (벽 자체)
+- 자기 자신(`GetOwner()`) 제외 처리
+
+#### SpawnBrick 어빌리티 3종 토글
+- **초기 타입**: `RandBool()` 2종 → `RandRange(0,2)` 3종(Moving/Destructible/Explosive) 랜덤
+- **ToggleSelectedBrickType()**: 2종 토글 → Moving → Destructible → Explosive → Moving 순환
+- **GetPromptDescription()**: "폭발 벽돌" 텍스트 추가 (3종 분기)
+
+### 학습/메모
+- `OverlapMultiByChannel` vs `OverlapMultiByObjectType`: 전자는 특정 채널(ECC_Pawn 등)만 감지, 후자는 ObjectType 필터로 모든 오브젝트 감지 가능. 벽돌처럼 WorldStatic인 액터도 감지하려면 `AllObjects` 사용
+
+### 이슈/해결
+- (없음)
+
+---
+
+## 2026-03-05
+### 작업 내용
+
+#### Destructible 벽돌 단계별 파괴 연출
+- **DeveloperSettings 확장**: `DestructibleBrickDamageStageMeshes` (단계별 손상 메시 배열) + `BrickDamageHitEffect` (타격 파편 Niagara)
+- **BrickActor**: `MulticastSpawnDamageHitEffect()` NetMulticast RPC 추가 — 기존 DestroyEffect 패턴 동일
+- **BrickComponent ApplyDamage()**: HP > 0 시 `MulticastSpawnDamageHitEffect()` 호출 추가
+- **BrickComponent UpdateDamageVisuals()**: 머티리얼 업데이트 전 `DamageStageMeshes[DamageTaken-1]` 메시 교체 + MID 재생성
+- **하위 호환**: 배열 비어있거나 이펙트 미설정 시 기존 동작 유지
+
+#### 벽돌 타입별 머티리얼 시스템
+- **DeveloperSettings**: `BrickMaterialStandard/Explosive/Moving/Destructible` 4개 머티리얼 프로퍼티 추가
+- **BrickComponent**: `GetBrickMaterial()` static 함수 + BeginPlay에서 타입별 머티리얼 적용 (미설정 시 기존 색상 폴백)
+
+#### 에셋 정리
+- 미사용 에셋 삭제: BP_GameModeApproachingWall, Megascans Brick_Wall, 구 PlaceableObjectCatalog, M_Brick
+- 새 에셋 추가: M_Brick_Default, MI_Brick_Destructible/Explosive/Movable, Cube_Damaged 1~3, Paving_Bricks 텍스처/머티리얼
+- StaticMeshEditorModeling 플러그인 활성화 + EditMesh 맵 추가
+
+### 학습/메모
+- **UE Modeling Mode**: 에디터 상단 Select Mode 드롭다운 → Modeling 항목, 또는 Tools > Modeling Mode
+  - 플러그인 비활성화 시 Edit > Plugins > "Modeling Tools Editor Mode" 체크 필요
+  - MeshBoolean/DisplaceMesh/PolyEdit로 간단한 손상 메시 제작 가능 — 외부 툴 불필요
+- 1인 개발 시 Fab보다 Modeling Mode가 규격 맞는 변형 메시 제작에 더 효율적
+
+### 이슈/해결
+- (없음)
+
+---
+
 ## 2026-03-04
 ### 작업 내용
 
@@ -262,61 +322,6 @@ TickGameRule → CheckWinCondition → OnGameEnd → 스탯 기록 → ServerTra
   - Server RPC에 `BrickType` 파라미터 추가 (클라이언트 선택 → 서버 검증)
 - **MatchRewardCounterWidget 2배 기록 버그**: `OnRep_GameResult`가 3개 `ReplicatedUsing` 프로퍼티에 의해 중복 호출 → `bGameResultHandled` 플래그로 1회만 실행되도록 수정
 
-#### Steam TriggerItemDrop 결과 확인 개선
-- **문제**: `TriggerItemDrop` 반환값 `true`는 "API 요청 접수"일 뿐, 실제 아이템 지급 여부 불확인. ResultHandle을 즉시 파괴하여 지급 실패를 감지 못함
-- **CurrencySubsystem (매치 보상)**: ResultHandle 보관 + 0.5초 폴링 → `GetResultStatus` + `GetResultItems` 확인
-  - items > 0: 지급 확정, 일일 카운트 증가 + 인벤토리 갱신
-  - items == 0: Steam drop 한도 도달, 해당 카테고리 카운트를 max로 설정
-  - `bMatchRewardPending` 중복 방지 플래그
-- **TreasureChestActor (보물상자)**: 동일 폴링 패턴 적용
-  - 성공: 인벤토리 갱신 (즉시 + 2초 재시도)
-  - 실패: 로컬 폴백 Coin 지급
-  - EndPlay에서 ResultHandle 정리
-
-#### Steam itemdefs.json 수정
-- Match Win/Loss Reward `drop_interval`: 15 → 1 (최소값)
-
-#### 기타
-- **PlacementCatalogItemWidget**: MaxCount=0 시 `Collapsed` → `"X/∞"` (Unicode `\u221E`) 표시로 변경
-- **Application.ico RC 빌드 에러 수정**: 1.6MB 파손 ICO 파일 → 엔진 기본 아이콘으로 교체
-
-### 학습/메모
-- **HUDBase 공통 위젯 패턴**: `bCreate*` protected bool 플래그 + 서브클래스 생성자에서 true 설정 → BeginPlay에서 조건부 생성. ChatWidget, MatchRewardCounterWidget 모두 동일 패턴
-- **Steam drop_max_per_window 보정**: TriggerItemDrop 실패 = Steam 서버 한도 초과로 판단 → 로컬 카운트를 max로 보정하여 UI 즉시 반영
-- **Replicated 프로퍼티 타이밍**: ServerTravel 후 초기화 순서에서 `PossessedBy()`가 `StartPlay()`/`OnGameReady()` 이전에 호출될 수 있음 → 중요한 값은 `ReplicatedUsing=OnRep_*`로 설정하여 도착 시 재적용 필요
-- **라인 트레이스 vs 거리 기반 감지**: 작은 오브젝트를 정확히 조준하기 어려운 경우 `TActorIterator` + `IsInRange()` + dot product 방향 선택이 훨씬 실용적
-- **Steam TriggerItemDrop 결과 확인**: `TriggerItemDrop(true)` ≠ 아이템 지급. ResultHandle을 `GetResultStatus` + `GetResultItems`로 폴링해야 실제 지급 여부 확인 가능. `k_EResultOK` + items == 0 → drop_window 한도 도달
-- **ReplicatedUsing 다중 프로퍼티 주의**: 같은 `OnRep` 콜백을 공유하는 프로퍼티가 여러 개이면 네트워크 상황에 따라 콜백이 복수 호출됨 → 중복 실행 방지 플래그 필수
-
-### 이슈/해결
-- **RC 빌드 에러 (`Default.rc2`)**: `Application.ico is not in 3.00 format` — 1.6MB 파손 아이콘 파일이 원인. 엔진 기본 Default.ico로 교체하여 해결. 에디터 Project Settings > Windows에서 커스텀 아이콘 재설정 가능
-- **MatchRewardCounter 2배 기록**: `OnRep_GameResult`가 `WinnerPlayerName`, `bGameHasWinner`, `bGameResultReady` 3개 프로퍼티에 의해 2~3회 호출 → `bGameResultHandled` 가드로 해결. 스탯/보상 모두 중복 지급 방지
-
-### 출시 로드맵
-1. **Approaching Wall 폴리싱** — 벽돌 머티리얼 시각 강화, Destructible 파괴 연출 적용 (코드 있으나 에셋 미적용), Explosive Brick 적극 활용 (현재 미사용), Moving Brick이 플레이어를 밀 수 있도록 대대적 변경 (현재 너무 정적)
-2. **Sumo 폴리싱**
-3. **JumpMap 폴리싱**
-4. **캐릭터 스킨 추가** — Cosmetic Body Slot 에셋 제작
-5. **판매 가능 Cosmetic 추가** — itemdefs.json 등록, 카탈로그 확장
-6. **결제 및 Gem→Coin 구매 검증** — Steam 결제 플로우 E2E 테스트
-7. **UI 폴리싱** — 전반적 UX 개선
-8. **MiniGame Level 추가 및 폴리싱** — 맵 변형/추가
-9. **Steam 출시 준비** — 스토어 페이지, 빌드 업로드, 최종 QA
-
 ---
-
-## 2026-03-02
-### 작업 내용
-
-#### 버그 수정: 채팅 전송 후 키보드 조작 불능
-- **증상**: Enter로 채팅 전송 후 WASD 등 키보드 조작이 안 됨 — 화면 클릭해야 복원
-- **원인**: `SendCurrentMessage()`에서 텍스트만 클리어하고 포커스를 ChatInputBox에 남겨둠 → 키보드 입력이 계속 채팅 위젯으로 전달
-- **수정**: `RestoreGameFocus()` 함수 추가 — `FSlateApplication::SetUserFocusToGameViewport(0)` 호출
-  - 메시지 전송 후 + 빈 메시지 Enter 시 모두 포커스 복원
-
-#### JumpMap 에셋 갱신 + GA_Grapple 감지 범위 확대
-- GrappleRange 2000 → 3000 (감지 범위 확대)
-
----
-*마지막 동기화: 2026-03-04*
+*마지막 동기화: 2026-03-08*
 *소스: [WjWorld](https://github.com/shimwoojin/WjWorld)*
