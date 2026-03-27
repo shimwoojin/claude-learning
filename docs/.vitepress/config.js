@@ -26,7 +26,7 @@ export default defineConfig({
             { text: '개요', link: '/projects/' },
             { text: 'Portfolio (React)', link: '/projects/portfolio' },
             { text: 'WjWorld (Unreal)', link: '/projects/wjworld' },
-            { text: 'W3_Jungle_Team6 (DX11 Editor)', link: '/projects/w3-jungle-team6' }
+            { text: 'CraftonEngine (DX11 Editor)', link: '/projects/w3-jungle-team6' }
           ]
         }
       ],
