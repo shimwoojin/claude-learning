@@ -14,15 +14,19 @@
 #### 커스텀 RTTI 시스템
 - `DECLARE_CLASS` / `DEFINE_CLASS` 매크로를 통한 자체 리플렉션 구현
 - `IMPLEMENT_CLASS` = `DEFINE_CLASS` + `REGISTER_FACTORY` 통합 매크로 (cpp에서 사용)
-- `FTypeInfo` 체인 기반 `IsA<T>()`, `Cast<T>()` 지원
+- `FTypeInfo` 체인 기반 `IsA()`, `Cast()` 지원
 - `UObjectManager` 싱글톤으로 오브젝트 생명주기 관리, `FObjectFactory`로 다형적 생성
-- **Name Hiding 이슈**: `DECLARE_CLASS`의 static Cast가 `UObject::Cast<T>` 템플릿을 숨겨 빌드 오류 발생 → 전역 `Cast<T>(UObject*)` 함수로 해결
+- **Name Hiding 이슈**: `DECLARE_CLASS`의 static Cast가 `UObject::Cast` 템플릿을 숨겨 빌드 오류 발생 → 전역 `Cast` 함수로 해결
 
 #### DirectX 11 렌더링 파이프라인
 - 커맨드 버퍼 패턴: `RenderCollector` → `RenderBus` → `Renderer`
 - 멀티 패스 렌더링: Opaque → Font → SubUV → Translucent → StencilMask → Outline → Editor → Grid → DepthLess
 - HLSL 셰이더 런타임 컴파일
 - **오프스크린 렌더링**: `FViewport`가 D3D11 RT/SRV/DSV를 소유, ImGui::Image로 표시
+- **렌더 파이프라인 리팩토링 (Week4)**: EPrimitiveType/ERenderCommandType enum 제거, typed batcher entry 및 command builder 도입
+- **FBatcherBase / FDynamicBuffer**: Batcher 공통 베이스 클래스 및 동적 버퍼 추상화
+- **렌더 수집 책임 이동**: RenderCollector → 각 컴포넌트가 자체 렌더 커맨드 수집
+- **HLSL 셰이더 구조 개편**: `Common/` include 계층 구조로 재구성
 
 #### 뷰포트 아키텍처 (UE 스타일)
 - `FViewport` / `FViewportClient` / `FLevelEditorViewportClient` 계층 분리
@@ -40,6 +44,13 @@
 - `GizmoComponent`: 트랜스폼 조작 핸들
 - **패인별 툴바 오버레이**: ImGui 오버레이 윈도우(NoDecoration)로 각 뷰포트 패인 위에 Layout/Settings UI 배치
 
+#### OBJ 임포터 & 메시 시스템 (Week4)
+- OBJ/MTL 파일 파싱 및 유니코드 경로 처리
+- 좌표계 변환 보정 (로컬 → 엔진 좌표계)
+- `UStaticMesh` 바이너리 캐싱 (`FArchive` 직렬화) — 디버그/릴리즈 호환성 보장
+- **머티리얼 오버라이드 시스템**: 컴포넌트 단위 머티리얼 교체 지원
+- **ObjViewer 엔진**: 메시 프리뷰 전용 빌드 구성 (`ObjViewDebug`, `IS_OBJ_VIEWER=1`)
+
 #### 입력 & 물리
 - `InputSystem`: Windows 메시지 기반 키보드/마우스 (드래그 감지)
 - Ray-triangle intersection으로 뷰포트 오브젝트 선택
@@ -52,25 +63,26 @@
 - **그래픽스**: DirectX 11, HLSL, WICTextureLoader (PNG 아이콘)
 - **UI**: ImGui (도킹, 이미지 버튼, 팝업)
 - **직렬화**: SimpleJSON (json.hpp)
-- **빌드**: MSBuild, Visual Studio 2022
+- **빌드**: MSBuild, Visual Studio 2022, MultiProcessorCompilation (`/MP`)
 - **버전 관리**: Git
 
-## 최근 진행 상황 (Week4)
-- 프로젝트 리네이밍 W3_Jungle_Team6 → CraftonEngine
-- UE 스타일 Viewport 아키텍처 적용 (오프스크린 렌더링, FViewport/FViewportClient 분리)
-- SSplitter 트리 기반 12가지 뷰포트 레이아웃 + 분할 바 드래그
-- 뷰포트별 독립 렌더 옵션 (FViewportRenderOptions)
-- ELevelViewportType: Perspective + 6방향 Orthographic 프리셋
-- Ortho 뷰: 회전 차단, 우클릭 패닝, OrthoWidth 비례 감도
-- OnePane→분할 전환 시 Top/Front/Right 자동 배정
-- IMPLEMENT_CLASS 매크로 통합
-- Cast<T> name hiding 이슈 해결 (전역 함수)
-- FObjectIterator 런타임 타입 필터링
-- AStaticMeshActor UI 스폰 지원
+## 최근 진행 상황 (Week4 — 2026-03-30)
+- 렌더 파이프라인 대규모 리팩토링: enum 제거, collect 시그니처 통합, batcher 추상화
+- HLSL 셰이더 `Common/` include 계층 구조 재구성
+- OBJ 임포터 수정: 머티리얼 매핑/텍스처 로딩/좌표계/유니코드/성능
+- 스태틱 메시 머티리얼 오버라이드 시스템 구현
+- `UStaticMesh` 캐싱 + `FArchive` 직렬화 개선
+- 디버그/릴리즈 `.bin` 캐시 호환성 및 힙 손상 버그 수정
+- 액터 스폰 UI를 기본 프리미티브로 제한 및 구조화
+- ObjViewer 엔진 추가 (ObjViewDebug 빌드)
+- `PrimitiveActors` 삭제 (사용처 제거)
+- MultiProcessorCompilation (`/MP`) 활성화
+- 오브젝트+바이너리 드롭리스트 기능
 
 ## 유용한 코드 스니펫
 
 ### RTTI 매크로 패턴
+
 ```cpp
 // Header (.h)
 class UMyClass : public UParentClass {
@@ -82,6 +94,7 @@ IMPLEMENT_CLASS(UMyClass, UParentClass)  // = DEFINE_CLASS + REGISTER_FACTORY
 ```
 
 ### 뷰포트별 렌더 옵션
+
 ```cpp
 struct FViewportRenderOptions {
     EViewMode ViewMode;
@@ -90,11 +103,12 @@ struct FViewportRenderOptions {
     int32 GridHalfLineCount;
     float CameraMoveSensitivity;
     float CameraRotateSensitivity;
-    ELevelViewportType ViewportType;  // Perspective/Top/Bottom/Left/Right/Front/Back
+    ELevelViewportType ViewportType;
 };
 ```
 
 ### SSplitter 트리 기반 레이아웃
+
 ```
 FourPanes2x2:
   H(Root) → V(Left)[W0/W2] | V(Right)[W1/W3]
@@ -104,6 +118,7 @@ ThreePanesLeft:
 ```
 
 ### ImGui 오버레이 윈도우 패턴
+
 ```cpp
 ImGui::SetNextWindowPos(ImVec2(PaneRect.X, PaneRect.Y));
 ImGui::SetNextWindowBgAlpha(0.4f);
@@ -114,10 +129,11 @@ ImGui::Begin("##Overlay", nullptr,
 ```
 
 ### MSBuild 명령어
+
 ```bash
 msbuild CraftonEngine.sln /p:Configuration=Debug /p:Platform=x64
 ```
 
 ---
-*마지막 동기화: 2026-03-27*
+*마지막 동기화: 2026-03-31*
 *소스: [CraftonEngine](https://github.com/chodott/W3_Jungle_Team6)*
